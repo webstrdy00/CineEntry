@@ -1,13 +1,13 @@
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import httpx
+from jwt import PyJWKClient
 import jwt
-import json
-from typing import Dict, Any
 from app.config import settings
-from app.services.redis_service import redis_service
 
 security = HTTPBearer()
+
+# PyJWKClient for Supabase JWKS (handles kid-based key selection automatically)
+jwk_client = PyJWKClient(settings.SUPABASE_JWKS_URL, cache_keys=True)
 
 
 async def get_current_user(
@@ -28,13 +28,13 @@ async def get_current_user(
     token = credentials.credentials
 
     try:
-        # Fetch JWKS from Supabase (should be cached in production)
-        jwks = await fetch_supabase_jwks()
+        # Get the signing key from JWKS based on the token's kid
+        signing_key = jwk_client.get_signing_key_from_jwt(token)
 
-        # Decode and verify JWT
+        # Decode and verify JWT with the correct public key
         payload = jwt.decode(
             token,
-            jwks,
+            signing_key.key,  # Use the specific key for this token's kid
             algorithms=[settings.JWT_ALGORITHM],
             audience=settings.JWT_AUDIENCE,
         )
@@ -63,41 +63,6 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Authentication failed: {str(e)}",
-        )
-
-
-async def fetch_supabase_jwks() -> Dict[str, Any]:
-    """
-    Fetch JWKS (JSON Web Key Set) from Supabase
-
-    Uses Redis caching for performance (1 hour cache)
-
-    Returns:
-        JWKS dictionary
-    """
-    cache_key = "supabase_jwks"
-
-    # Try to get from cache
-    cached_jwks = await redis_service.get(cache_key)
-    if cached_jwks:
-        return json.loads(cached_jwks)
-
-    # Fetch from Supabase
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(settings.SUPABASE_JWKS_URL)
-            response.raise_for_status()
-            jwks = response.json()
-
-            # Cache for 1 hour (3600 seconds)
-            await redis_service.set(cache_key, json.dumps(jwks), ttl=3600)
-
-            return jwks
-
-    except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to fetch JWKS from Supabase: {str(e)}",
         )
 
 

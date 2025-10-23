@@ -4,7 +4,8 @@ User Pydantic schemas
 """
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr
+from uuid import UUID
+from pydantic import BaseModel, EmailStr, field_serializer
 
 
 class UserBase(BaseModel):
@@ -28,10 +29,15 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     """User 응답 스키마"""
-    id: str  # UUID from Supabase
+    id: UUID
     yearly_goal: int
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer('id')
+    def serialize_id(self, id: UUID, _info):
+        """UUID를 문자열로 변환"""
+        return str(id)
 
     class Config:
         from_attributes = True

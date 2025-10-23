@@ -26,10 +26,16 @@ const LoginScreen = ({ navigation }: any) => {
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
+
+      // 웹 환경과 모바일 환경에 따라 redirectTo 설정
+      const redirectTo = typeof window !== 'undefined'
+        ? window.location.origin // 웹: http://localhost:8081
+        : 'filmory://auth/callback'; // 모바일: Deep Link
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'filmory://auth/callback',
+          redirectTo,
         },
       });
 
@@ -70,10 +76,16 @@ const LoginScreen = ({ navigation }: any) => {
   const handleKakaoLogin = async () => {
     try {
       setLoading(true);
+
+      // 웹 환경과 모바일 환경에 따라 redirectTo 설정
+      const redirectTo = typeof window !== 'undefined'
+        ? window.location.origin
+        : 'filmory://auth/callback';
+
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'kakao',
         options: {
-          redirectTo: 'filmory://auth/callback',
+          redirectTo,
         },
       });
 

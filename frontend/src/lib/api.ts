@@ -1,5 +1,5 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
 
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
@@ -9,24 +9,33 @@ const api = axios.create({
   },
 });
 
-// Request Interceptor: JWT 토큰 자동 추가
+// Request Interceptor: JWT 토큰 자동 추가 및 trailing slash 처리
 api.interceptors.request.use(
   async (config) => {
     try {
-      // AsyncStorage에서 Supabase 세션 가져오기
-      const sessionStr = await AsyncStorage.getItem('supabase.auth.token');
+      // Supabase에서 현재 세션 가져오기
+      const { data: { session } } = await supabase.auth.getSession();
 
-      if (sessionStr) {
-        const session = JSON.parse(sessionStr);
-        const accessToken = session.access_token;
-
-        if (accessToken) {
-          config.headers.Authorization = `Bearer ${accessToken}`;
-        }
+      if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
+        console.log('🔑 JWT 토큰 설정:', session.access_token.substring(0, 20) + '...');
+      } else {
+        console.warn('⚠️ 세션 없음 - 로그인 필요');
       }
     } catch (error) {
-      console.error('토큰 가져오기 실패:', error);
+      console.error('❌ 토큰 가져오기 실패:', error);
     }
+
+    // FastAPI trailing slash 처리: 숫자나 특수 경로가 아닌 기본 리소스 경로에 trailing slash 추가
+    if (config.url && !config.url.match(/\/\d+/) && !config.url.endsWith('/')) {
+      const specialPaths = ['/search', '/metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me'];
+      const hasSpecialPath = specialPaths.some(path => config.url!.includes(path));
+      if (!hasSpecialPath) {
+        config.url = config.url + '/';
+      }
+    }
+
+    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
 
     return config;
   },

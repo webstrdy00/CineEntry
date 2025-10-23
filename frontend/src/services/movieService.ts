@@ -45,7 +45,7 @@ export interface MovieSearchParams {
  */
 export const getMovies = async (status?: string) => {
   const params = status ? { status } : {};
-  const response = await api.get('/api/v1/movies', { params });
+  const response = await api.get('/api/v1/movies/', { params });
   return response.data;
 };
 
@@ -63,7 +63,7 @@ export const getMovieDetail = async (movieId: number) => {
  * @param data - 영화 생성 데이터
  */
 export const addMovie = async (data: UserMovieCreate) => {
-  const response = await api.post('/api/v1/movies', data);
+  const response = await api.post('/api/v1/movies/', data);
   return response.data;
 };
 

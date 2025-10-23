@@ -17,11 +17,14 @@ class RedisService:
     async def connect(self):
         """Redis 연결"""
         if not self.redis_client:
-            self.redis_client = await redis.from_url(
+            # redis.from_url()은 동기 함수 - await 제거
+            self.redis_client = redis.from_url(
                 settings.REDIS_URL,
                 encoding="utf-8",
                 decode_responses=True
             )
+            # 연결 테스트
+            await self.redis_client.ping()
 
     async def disconnect(self):
         """Redis 연결 종료"""

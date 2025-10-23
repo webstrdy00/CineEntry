@@ -20,7 +20,13 @@ export default function HomeScreen() {
 
   // State
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<any>(null)
+  const [stats, setStats] = useState<any>({
+    yearly_goal: 100,
+    yearly_progress: 0,
+    total_watched: 0,
+    current_streak: 0,
+    average_rating: 0,
+  })
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
   const [bestMoviesList, setBestMoviesList] = useState<any[]>([])
@@ -34,27 +40,43 @@ export default function HomeScreen() {
     try {
       setLoading(true)
 
+      console.log('📡 HomeScreen: API 호출 시작')
+
       // API 호출
       const [statsData, watchingData, watchlistData, bestMoviesData] = await Promise.all([
-        getOverallStats(),
-        getMovies('watching').catch(() => []),
-        getMovies('watchlist').catch(() => []),
-        getBestMovies(10).catch(() => []),
+        getOverallStats().catch((err) => {
+          console.error('❌ getOverallStats 실패:', err.message)
+          return null
+        }),
+        getMovies('watching').catch((err) => {
+          console.error('❌ getMovies(watching) 실패:', err.message)
+          return []
+        }),
+        getMovies('watchlist').catch((err) => {
+          console.error('❌ getMovies(watchlist) 실패:', err.message)
+          return []
+        }),
+        getBestMovies(10).catch((err) => {
+          console.error('❌ getBestMovies 실패:', err.message)
+          return []
+        }),
       ])
+
+      console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, bestMoviesData })
 
       setStats(statsData)
       setWatchingMovies(watchingData)
       setWatchlistMovies(watchlistData)
       setBestMoviesList(bestMoviesData)
-    } catch (error) {
-      console.error('❌ HomeScreen 데이터 로드 실패:', error)
+    } catch (error: any) {
+      console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
     } finally {
       setLoading(false)
     }
   }
 
   // 로딩 중
-  if (loading || !stats) {
+  if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
