@@ -1,4 +1,4 @@
-import api from '../lib/api';
+import api, { unwrapResponse } from '../lib/api';
 
 // ===========================
 // Tag Service
@@ -29,7 +29,7 @@ export interface PopularTag {
  */
 export const getTags = async (): Promise<Tag[]> => {
   const response = await api.get('/api/v1/tags');
-  return response.data;
+  return unwrapResponse<Tag[]>(response);
 };
 
 /**
@@ -40,7 +40,7 @@ export const getPopularTags = async (limit: number = 10): Promise<PopularTag[]> 
   const response = await api.get('/api/v1/tags/popular', {
     params: { limit },
   });
-  return response.data;
+  return unwrapResponse<PopularTag[]>(response);
 };
 
 /**
@@ -49,7 +49,7 @@ export const getPopularTags = async (limit: number = 10): Promise<PopularTag[]> 
  */
 export const createTag = async (data: TagCreate): Promise<Tag> => {
   const response = await api.post('/api/v1/tags', data);
-  return response.data;
+  return unwrapResponse<Tag>(response);
 };
 
 /**

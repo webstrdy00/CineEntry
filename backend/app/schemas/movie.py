@@ -46,13 +46,12 @@ class MovieResponse(MovieBase):
 class UserMovieBase(BaseModel):
     """UserMovie 기본 스키마"""
     movie_id: int
-    status: str = Field(..., pattern="^(watching|completed|watchlist)$")
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    review: Optional[str] = None
+    status: str = Field(..., pattern="^(wishlist|watching|completed)$")  # wishlist로 통일
+    rating: Optional[float] = Field(None, ge=0, le=5)  # 0~5, 0.5 단위 허용
+    one_line_review: Optional[str] = None  # 모델과 일치
     watch_date: Optional[date] = None
     progress: Optional[int] = None  # minutes watched
-    is_favorite: bool = False
-    is_life_movie: bool = False
+    is_best_movie: bool = False  # 모델과 일치
 
 
 class UserMovieCreate(UserMovieBase):
@@ -62,13 +61,12 @@ class UserMovieCreate(UserMovieBase):
 
 class UserMovieUpdate(BaseModel):
     """UserMovie 업데이트 스키마"""
-    status: Optional[str] = Field(None, pattern="^(watching|completed|watchlist)$")
-    rating: Optional[int] = Field(None, ge=1, le=5)
-    review: Optional[str] = None
+    status: Optional[str] = Field(None, pattern="^(wishlist|watching|completed)$")
+    rating: Optional[float] = Field(None, ge=0, le=5)
+    one_line_review: Optional[str] = None
     watch_date: Optional[date] = None
     progress: Optional[int] = None
-    is_favorite: Optional[bool] = None
-    is_life_movie: Optional[bool] = None
+    is_best_movie: Optional[bool] = None
 
 
 class UserMovieResponse(UserMovieBase):

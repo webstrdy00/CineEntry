@@ -1,6 +1,30 @@
 import axios from 'axios';
 import { supabase } from './supabase';
 
+// ===========================
+// BaseResponse Type (백엔드 응답 구조)
+// ===========================
+export interface BaseResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+// ===========================
+// Utility: BaseResponse 래퍼 제거
+// ===========================
+/**
+ * BaseResponse 래퍼를 벗기고 실제 데이터만 반환
+ * @param response - Axios 응답
+ * @returns 실제 데이터 (response.data.data)
+ */
+export const unwrapResponse = <T>(response: { data: BaseResponse<T> }): T => {
+  if (!response.data.success) {
+    throw new Error(response.data.message || 'API 요청 실패');
+  }
+  return response.data.data as T;
+};
+
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
   timeout: 10000,

@@ -1,4 +1,4 @@
-import api from '../lib/api';
+import api, { unwrapResponse } from '../lib/api';
 
 // ===========================
 // User Service
@@ -35,7 +35,7 @@ export interface UserCreate {
  */
 export const getCurrentUser = async (): Promise<User> => {
   const response = await api.get('/api/v1/users/me');
-  return response.data;
+  return unwrapResponse<User>(response);
 };
 
 /**
@@ -44,7 +44,7 @@ export const getCurrentUser = async (): Promise<User> => {
  */
 export const updateUserProfile = async (data: UserUpdate): Promise<User> => {
   const response = await api.put('/api/v1/users/me', data);
-  return response.data;
+  return unwrapResponse<User>(response);
 };
 
 /**
@@ -53,7 +53,7 @@ export const updateUserProfile = async (data: UserUpdate): Promise<User> => {
  */
 export const createUser = async (data: UserCreate): Promise<User> => {
   const response = await api.post('/api/v1/users', data);
-  return response.data;
+  return unwrapResponse<User>(response);
 };
 
 /**

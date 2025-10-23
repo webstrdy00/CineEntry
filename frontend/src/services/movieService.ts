@@ -1,4 +1,4 @@
-import api from '../lib/api';
+import api, { unwrapResponse } from '../lib/api';
 
 // ===========================
 // Movie Service
@@ -46,7 +46,7 @@ export interface MovieSearchParams {
 export const getMovies = async (status?: string) => {
   const params = status ? { status } : {};
   const response = await api.get('/api/v1/movies/', { params });
-  return response.data;
+  return unwrapResponse<any[]>(response);
 };
 
 /**
@@ -55,7 +55,7 @@ export const getMovies = async (status?: string) => {
  */
 export const getMovieDetail = async (movieId: number) => {
   const response = await api.get(`/api/v1/movies/${movieId}`);
-  return response.data;
+  return unwrapResponse<any>(response);
 };
 
 /**
@@ -64,7 +64,7 @@ export const getMovieDetail = async (movieId: number) => {
  */
 export const addMovie = async (data: UserMovieCreate) => {
   const response = await api.post('/api/v1/movies/', data);
-  return response.data;
+  return unwrapResponse<any>(response);
 };
 
 /**
@@ -74,7 +74,7 @@ export const addMovie = async (data: UserMovieCreate) => {
  */
 export const updateMovie = async (movieId: number, data: UserMovieUpdate) => {
   const response = await api.put(`/api/v1/movies/${movieId}`, data);
-  return response.data;
+  return unwrapResponse<any>(response);
 };
 
 /**
@@ -83,7 +83,7 @@ export const updateMovie = async (movieId: number, data: UserMovieUpdate) => {
  */
 export const deleteMovie = async (movieId: number) => {
   const response = await api.delete(`/api/v1/movies/${movieId}`);
-  return response.data;
+  return unwrapResponse<any>(response);
 };
 
 /**
@@ -94,7 +94,7 @@ export const searchMovies = async (query: string) => {
   const response = await api.get('/api/v1/movies/search', {
     params: { q: query },
   });
-  return response.data;
+  return unwrapResponse<any[]>(response);
 };
 
 /**
@@ -103,5 +103,5 @@ export const searchMovies = async (query: string) => {
  */
 export const getMovieMetadata = async (movieId: string) => {
   const response = await api.get(`/api/v1/movies/${movieId}/metadata`);
-  return response.data;
+  return unwrapResponse<any>(response);
 };

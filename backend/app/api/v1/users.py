@@ -2,7 +2,7 @@
 User API endpoints
 사용자 정보 관련 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -11,8 +11,43 @@ from app.middleware.auth_middleware import get_current_user_id
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdate, UserCreate
 from app.schemas.common import BaseResponse
+from app.config import settings
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def verify_webhook_secret(x_webhook_secret: Optional[str] = Header(None)):
+    """
+    Webhook Secret 검증
+
+    Supabase Webhook 또는 관리자 요청인지 확인
+    - X-Webhook-Secret 헤더가 환경변수의 SUPABASE_WEBHOOK_SECRET과 일치해야 함
+
+    Args:
+        x_webhook_secret: X-Webhook-Secret 헤더 값
+
+    Raises:
+        HTTPException: 401 if secret is invalid or missing
+    """
+    if not settings.SUPABASE_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Webhook secret is not configured"
+        )
+
+    if not x_webhook_secret:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing webhook secret"
+        )
+
+    if x_webhook_secret != settings.SUPABASE_WEBHOOK_SECRET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid webhook secret"
+        )
+
+    return True
 
 
 @router.get("/me", response_model=BaseResponse[UserResponse])
@@ -80,17 +115,29 @@ async def update_current_user(
 @router.post("", response_model=BaseResponse[UserResponse], status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_create: UserCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _verified: bool = Depends(verify_webhook_secret)  # Webhook Secret 검증 추가
 ):
     """
     새 사용자 생성 (Supabase Webhook용)
+
+    🔒 보안: X-Webhook-Secret 헤더 검증 필요
 
     Supabase Auth에서 사용자 가입 시 Webhook으로 호출
     - email: 이메일 (필수)
     - display_name: 사용자 이름 (선택)
     - avatar_url: 프로필 이미지 URL (선택)
 
-    NOTE: 실제 운영에서는 Webhook Secret 검증 필요
+    Headers:
+    - X-Webhook-Secret: Webhook 보안 시크릿 (환경변수와 일치해야 함)
+
+    Example:
+    ```bash
+    curl -X POST http://localhost:8000/api/v1/users \\
+      -H "X-Webhook-Secret: your-secret-key" \\
+      -H "Content-Type: application/json" \\
+      -d '{"email": "user@example.com"}'
+    ```
     """
     # 이메일 중복 체크
     existing_user = db.query(User).filter(User.email == user_create.email).first()

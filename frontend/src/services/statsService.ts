@@ -1,4 +1,4 @@
-import api from '../lib/api';
+import api, { unwrapResponse } from '../lib/api';
 
 // ===========================
 // Stats Service
@@ -46,7 +46,7 @@ export interface BestMovie {
  */
 export const getOverallStats = async (): Promise<OverallStats> => {
   const response = await api.get('/api/v1/stats');
-  return response.data;
+  return unwrapResponse<OverallStats>(response);
 };
 
 /**
@@ -57,7 +57,7 @@ export const getMonthlyStats = async (months: number = 6): Promise<MonthlyData[]
   const response = await api.get('/api/v1/stats/monthly', {
     params: { months },
   });
-  return response.data;
+  return unwrapResponse<MonthlyData[]>(response);
 };
 
 /**
@@ -68,7 +68,7 @@ export const getGenreStats = async (limit: number = 5): Promise<GenreStats[]> =>
   const response = await api.get('/api/v1/stats/genres', {
     params: { limit },
   });
-  return response.data;
+  return unwrapResponse<GenreStats[]>(response);
 };
 
 /**
@@ -79,7 +79,7 @@ export const getTagStats = async (limit: number = 10): Promise<TagStats[]> => {
   const response = await api.get('/api/v1/stats/tags', {
     params: { limit },
   });
-  return response.data;
+  return unwrapResponse<TagStats[]>(response);
 };
 
 /**
@@ -90,5 +90,5 @@ export const getBestMovies = async (limit: number = 10): Promise<BestMovie[]> =>
   const response = await api.get('/api/v1/stats/best-movies', {
     params: { limit },
   });
-  return response.data;
+  return unwrapResponse<BestMovie[]>(response);
 };

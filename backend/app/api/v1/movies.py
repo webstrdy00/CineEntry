@@ -75,13 +75,12 @@ async def add_movie(
 
     Request Body:
     - movie_id: ID of the movie (must exist in movies table)
-    - status: "watchlist", "watching", or "completed"
-    - rating: 1-5 (optional)
-    - review: Review text (optional)
+    - status: "wishlist", "watching", or "completed"
+    - rating: 0-5 (0.5 단위, optional)
+    - one_line_review: Review text (optional)
     - watch_date: Date watched (optional)
     - progress: Minutes watched (optional, for "watching" status)
-    - is_favorite: Mark as favorite (default: false)
-    - is_life_movie: Mark as life movie (default: false)
+    - is_best_movie: Mark as best movie (default: false)
     """
     # Check if movie exists
     movie = db.query(Movie).filter(Movie.id == user_movie_data.movie_id).first()
@@ -130,13 +129,12 @@ async def update_movie(
     Update movie information (rating, review, status, etc.)
 
     Request Body:
-    - status: "watchlist", "watching", or "completed" (optional)
-    - rating: 1-5 (optional)
-    - review: Review text (optional)
+    - status: "wishlist", "watching", or "completed" (optional)
+    - rating: 0-5 (0.5 단위, optional)
+    - one_line_review: Review text (optional)
     - watch_date: Date watched (optional)
     - progress: Minutes watched (optional)
-    - is_favorite: Mark as favorite (optional)
-    - is_life_movie: Mark as life movie (optional)
+    - is_best_movie: Mark as best movie (optional)
     """
     user_movie = (
         db.query(UserMovie)

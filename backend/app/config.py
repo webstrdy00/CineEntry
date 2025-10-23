@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_JWT_SECRET: Optional[str] = None
     SUPABASE_JWKS_URL: str
+    SUPABASE_WEBHOOK_SECRET: Optional[str] = None  # Webhook 보안용
 
     # Redis (for caching)
     REDIS_URL: str = "redis://localhost:6379"

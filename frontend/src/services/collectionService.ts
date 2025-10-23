@@ -1,4 +1,4 @@
-import api from '../lib/api';
+import api, { unwrapResponse } from '../lib/api';
 
 // ===========================
 // Collection Service
@@ -59,7 +59,7 @@ export interface CollectionDetail extends Collection {
  */
 export const getCollections = async (): Promise<Collection[]> => {
   const response = await api.get('/api/v1/collections');
-  return response.data;
+  return unwrapResponse<Collection[]>(response);
 };
 
 /**
@@ -68,7 +68,7 @@ export const getCollections = async (): Promise<Collection[]> => {
  */
 export const getCollectionDetail = async (collectionId: number): Promise<CollectionDetail> => {
   const response = await api.get(`/api/v1/collections/${collectionId}`);
-  return response.data;
+  return unwrapResponse<CollectionDetail>(response);
 };
 
 /**
@@ -77,7 +77,7 @@ export const getCollectionDetail = async (collectionId: number): Promise<Collect
  */
 export const createCollection = async (data: CollectionCreate): Promise<Collection> => {
   const response = await api.post('/api/v1/collections', data);
-  return response.data;
+  return unwrapResponse<Collection>(response);
 };
 
 /**
@@ -90,7 +90,7 @@ export const updateCollection = async (
   data: CollectionUpdate
 ): Promise<Collection> => {
   const response = await api.put(`/api/v1/collections/${collectionId}`, data);
-  return response.data;
+  return unwrapResponse<Collection>(response);
 };
 
 /**
