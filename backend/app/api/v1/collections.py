@@ -43,7 +43,7 @@ async def get_user_collections(
             id=collection.id,
             name=collection.name,
             description=collection.description,
-            type=collection.type,
+            is_auto=collection.is_auto,
             cover_image_url=collection.cover_image_url,
             auto_rules=collection.auto_rules,
             user_id=collection.user_id,
@@ -89,7 +89,7 @@ async def get_collection_detail(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
@@ -111,9 +111,9 @@ async def create_collection(
     Request Body:
     - name: Collection name (required)
     - description: Collection description (optional)
-    - type: "manual" or "auto" (required)
+    - is_auto: True for auto collection, False for manual (default: False)
     - cover_image_url: Cover image URL (optional)
-    - auto_rules: Auto collection rules (JSONB, optional, only for type="auto")
+    - auto_rules: Auto collection rules (JSONB, optional, only for is_auto=True)
     """
     # Create collection
     collection = Collection(
@@ -129,7 +129,7 @@ async def create_collection(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
@@ -184,7 +184,7 @@ async def update_collection(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
@@ -363,9 +363,9 @@ async def sync_auto_collection(
     """
     자동 컬렉션 동기화
 
-    auto_rule에 정의된 규칙에 따라 영화를 자동으로 추가/제거
+    auto_rules에 정의된 규칙에 따라 영화를 자동으로 추가/제거
 
-    auto_rule 예시:
+    auto_rules 예시:
     {
         "status": "completed",
         "rating": {"min": 4.0},
@@ -399,16 +399,16 @@ async def sync_auto_collection(
             detail="This is not an auto collection",
         )
 
-    # Check auto_rule exists
-    if not collection.auto_rule:
+    # Check auto_rules exists
+    if not collection.auto_rules:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auto rule is not defined for this collection",
+            detail="Auto rules are not defined for this collection",
         )
 
     try:
-        # Validate auto_rule
-        auto_collection_service.validate_auto_rule(collection.auto_rule)
+        # Validate auto_rules
+        auto_collection_service.validate_auto_rule(collection.auto_rules)
 
         # Sync collection
         result = auto_collection_service.sync_auto_collection(collection_id, db)

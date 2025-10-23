@@ -259,9 +259,12 @@ async def create_movie_from_metadata(
 
     Request Body:
     - metadata: MovieMetadata from external API
+      - title → title_ko
+      - original_title → title_original
+      - year → production_year
 
     Returns:
-    - Created movie
+    - Created movie (returns existing if already in DB)
     """
     # Check if movie already exists
     existing = None
@@ -273,9 +276,21 @@ async def create_movie_from_metadata(
     if existing:
         return existing
 
-    # Create new movie
+    # Create new movie with field mapping
+    # MovieMetadata 필드 → Movie 모델 필드 매핑
     movie = Movie(
-        **metadata.model_dump()
+        title_ko=metadata.title,
+        title_original=metadata.original_title,
+        production_year=metadata.year,
+        director=metadata.director,
+        runtime=metadata.runtime,
+        genre=metadata.genre,
+        poster_url=metadata.poster_url,
+        backdrop_url=metadata.backdrop_url,
+        synopsis=metadata.synopsis,
+        kobis_code=metadata.kobis_code,
+        tmdb_id=metadata.tmdb_id,
+        kmdb_id=metadata.kmdb_id,
     )
 
     db.add(movie)

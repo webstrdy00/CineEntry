@@ -94,7 +94,8 @@ async def create_user_image(
     이미지를 S3에 업로드한 후, 이 API로 DB에 기록
     - user_movie_id: 영화 ID (필수)
     - image_url: S3 file_url (필수)
-    - image_type: 'ticket' or 'photocard'
+    - image_type: 'ticket' or 'photocard' (필수)
+    - thumbnail_url: 썸네일 URL (선택)
 
     NOTE: user_movie 소유권 확인
     """
@@ -114,7 +115,8 @@ async def create_user_image(
         user_id=user_id,
         user_movie_id=image_create.user_movie_id,
         image_url=image_create.image_url,
-        image_type=image_create.image_type
+        image_type=image_create.image_type,
+        thumbnail_url=image_create.thumbnail_url
     )
 
     db.add(new_image)

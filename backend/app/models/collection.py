@@ -13,9 +13,10 @@ class Collection(Base):
 
     name = Column(String(100), nullable=False)
     description = Column(Text)
+    cover_image_url = Column(String(500))  # 커버 이미지 URL
 
     is_auto = Column(Boolean, default=False, index=True)
-    auto_rule = Column(JSONB)  # JSON 규칙: {"genre": "액션", "year": 2023}
+    auto_rules = Column(JSONB)  # JSON 규칙: {"genre": "액션", "year": 2023} - 복수형으로 변경
 
     created_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

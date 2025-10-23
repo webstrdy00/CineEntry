@@ -21,7 +21,7 @@ class AutoCollectionService:
         """
         자동 컬렉션 동기화
 
-        auto_rule JSON 형식:
+        auto_rules JSON 형식:
         {
             "status": "completed",
             "rating": {"min": 4.0, "max": 5.0},
@@ -49,13 +49,13 @@ class AutoCollectionService:
         if not collection.is_auto:
             raise ValueError(f"Collection is not auto: {collection_id}")
 
-        if not collection.auto_rule:
-            raise ValueError(f"Collection auto_rule is empty: {collection_id}")
+        if not collection.auto_rules:
+            raise ValueError(f"Collection auto_rules is empty: {collection_id}")
 
         # 규칙에 맞는 영화 찾기
         matching_movies = AutoCollectionService._find_matching_movies(
             user_id=collection.user_id,
-            rules=collection.auto_rule,
+            rules=collection.auto_rules,
             db=db
         )
 
@@ -113,7 +113,7 @@ class AutoCollectionService:
 
         Args:
             user_id: 사용자 ID
-            rules: auto_rule JSON
+            rules: auto_rules JSON
             db: DB 세션
 
         Returns:
@@ -180,10 +180,10 @@ class AutoCollectionService:
     @staticmethod
     def validate_auto_rule(rules: Dict[str, Any]) -> bool:
         """
-        auto_rule 검증
+        auto_rules 검증
 
         Args:
-            rules: auto_rule JSON
+            rules: auto_rules JSON
 
         Returns:
             bool: 유효 여부
@@ -192,10 +192,10 @@ class AutoCollectionService:
             ValueError: 규칙이 유효하지 않을 경우
         """
         if not isinstance(rules, dict):
-            raise ValueError("auto_rule must be a dict")
+            raise ValueError("auto_rules must be a dict")
 
         if not rules:
-            raise ValueError("auto_rule cannot be empty")
+            raise ValueError("auto_rules cannot be empty")
 
         # 허용된 필드 목록
         allowed_fields = [
@@ -206,7 +206,7 @@ class AutoCollectionService:
         # 필드 검증
         for field in rules.keys():
             if field not in allowed_fields:
-                raise ValueError(f"Invalid field in auto_rule: {field}")
+                raise ValueError(f"Invalid field in auto_rules: {field}")
 
         # status 검증
         if "status" in rules:

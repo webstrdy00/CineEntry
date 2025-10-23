@@ -14,9 +14,9 @@ class CollectionBase(BaseModel):
     """Collection 기본 스키마"""
     name: str
     description: Optional[str] = None
-    type: str  # "manual" or "auto"
+    is_auto: bool = False  # True: 자동 수집, False: 수동 수집
     cover_image_url: Optional[str] = None
-    auto_rules: Optional[dict] = None  # JSONB
+    auto_rules: Optional[dict] = None  # JSONB - 자동 수집 규칙
 
 
 class CollectionCreate(CollectionBase):
