@@ -215,14 +215,14 @@ async def get_best_movies(
     user_id: str = Depends(get_current_user),
 ):
     """
-    Get user's best movies (is_life_movie = true)
+    Get user's best movies (is_best_movie = true)
     """
     best_movies = (
         db.query(UserMovie)
         .options(joinedload(UserMovie.movie))
         .filter(
             UserMovie.user_id == user_id,
-            UserMovie.is_life_movie == True,
+            UserMovie.is_best_movie == True,
         )
         .order_by(UserMovie.rating.desc(), UserMovie.watch_date.desc())
         .limit(limit)
@@ -232,12 +232,12 @@ async def get_best_movies(
     return [
         BestMovie(
             id=um.id,
-            title=um.movie.title,
+            title=um.movie.title_ko,
             director=um.movie.director,
-            year=um.movie.year,
+            year=um.movie.production_year,
             poster_url=um.movie.poster_url or "",
-            rating=um.rating or 0,
-            review=um.review or "",
+            rating=float(um.rating) if um.rating else 0,
+            review=um.one_line_review or "",
             watch_date=um.watch_date or date.today(),
         )
         for um in best_movies

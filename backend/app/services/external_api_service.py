@@ -3,10 +3,44 @@
 KOBIS, TMDb, KMDb API를 사용하여 영화 메타데이터 검색
 """
 import httpx
-from typing import List, Optional
+from typing import List, Optional, Any
 from app.config import settings
 from app.schemas.movie import MovieSearchResult, MovieMetadata
 from app.services.redis_service import redis_service
+
+
+def safe_int(value: Any, default: int = 0) -> int:
+    """
+    안전하게 정수로 변환
+
+    Args:
+        value: 변환할 값
+        default: 변환 실패 시 기본값
+
+    Returns:
+        정수 값 또는 기본값
+    """
+    if value is None or value == "":
+        return default
+
+    # 이미 정수인 경우
+    if isinstance(value, int):
+        return value
+
+    # 문자열인 경우
+    if isinstance(value, str):
+        # 숫자로만 구성되어 있는지 확인
+        if value.isdigit():
+            return int(value)
+        # 음수 처리
+        if value.startswith('-') and value[1:].isdigit():
+            return int(value)
+
+    # 변환 시도
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 
 
 class ExternalAPIService:
@@ -80,7 +114,7 @@ class ExternalAPIService:
                         title=movie.get("movieNm", ""),
                         original_title=movie.get("movieNmEn"),
                         director=director,
-                        year=int(movie.get("prdtYear", 0)),
+                        year=safe_int(movie.get("prdtYear")),
                         runtime=None,  # KOBIS doesn't provide runtime in search
                         genre=movie.get("repGenreNm"),
                         poster_url=None,  # KOBIS doesn't provide poster
@@ -142,7 +176,7 @@ class ExternalAPIService:
                 for movie in movies:
                     # Get release year
                     release_date = movie.get("release_date", "")
-                    year = int(release_date[:4]) if release_date else 0
+                    year = safe_int(release_date[:4]) if (release_date and len(release_date) >= 4) else 0
 
                     # Get poster URL
                     poster_path = movie.get("poster_path")

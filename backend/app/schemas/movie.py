@@ -70,7 +70,7 @@ class UserMovieUpdate(BaseModel):
 
 
 class UserMovieResponse(UserMovieBase):
-    """UserMovie 응답 스키마"""
+    """UserMovie 응답 스키마 (중첩 구조)"""
     id: int
     user_id: str
     movie: MovieResponse
@@ -79,6 +79,35 @@ class UserMovieResponse(UserMovieBase):
 
     class Config:
         from_attributes = True
+
+
+class FlatMovieResponse(BaseModel):
+    """Frontend 호환 평평한 영화 응답 스키마"""
+    # UserMovie 필드
+    id: int  # UserMovie ID
+    user_id: str
+    status: str
+    rating: Optional[float] = None
+    review: Optional[str] = None  # one_line_review
+    watch_date: Optional[date] = None
+    progress: Optional[int] = None
+    is_best_movie: bool = False
+
+    # Movie 필드 (평평하게 - 필드명 변경)
+    movie_id: int
+    title: str
+    original_title: Optional[str] = None
+    poster: Optional[str] = None  # poster_url → poster
+    backdrop: Optional[str] = None  # backdrop_url → backdrop
+    year: int
+    runtime: int
+    genre: str
+    director: str
+    synopsis: Optional[str] = None
+
+    # 메타데이터
+    created_at: datetime
+    updated_at: datetime
 
 
 class MovieSearchResult(BaseModel):

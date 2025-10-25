@@ -58,7 +58,9 @@ export const createTag = async (data: TagCreate): Promise<Tag> => {
  * @param tagId - 태그 ID
  */
 export const addTagToMovie = async (movieId: number, tagId: number): Promise<void> => {
-  await api.post(`/api/v1/tags/movies/${movieId}/tags`, { tag_id: tagId });
+  await api.post(`/api/v1/tags/movies/${movieId}/tags`, null, {
+    params: { tag_id: tagId }
+  });
 };
 
 /**

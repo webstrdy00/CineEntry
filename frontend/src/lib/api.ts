@@ -52,7 +52,7 @@ api.interceptors.request.use(
 
     // FastAPI trailing slash 처리: 숫자나 특수 경로가 아닌 기본 리소스 경로에 trailing slash 추가
     if (config.url && !config.url.match(/\/\d+/) && !config.url.endsWith('/')) {
-      const specialPaths = ['/search', '/metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me'];
+      const specialPaths = ['/search', '/metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me', '/tags'];
       const hasSpecialPath = specialPaths.some(path => config.url!.includes(path));
       if (!hasSpecialPath) {
         config.url = config.url + '/';

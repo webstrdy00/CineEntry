@@ -9,7 +9,8 @@ from app.models.collection_movie import CollectionMovie
 from app.models.user_movie import UserMovie
 from app.models.movie import Movie
 from app.schemas.collection import (
-    CollectionCreate, CollectionUpdate, CollectionResponse, CollectionWithMovies
+    CollectionCreate, CollectionUpdate, CollectionResponse, CollectionWithMovies,
+    SimpleMovieInCollection
 )
 from app.schemas.common import BaseResponse
 from app.services.auto_collection_service import auto_collection_service
@@ -56,36 +57,50 @@ async def get_user_collections(
     return result
 
 
-@router.get("/{collection_id}", response_model=CollectionResponse)
+@router.get("/{collection_id}", response_model=CollectionWithMovies)
 async def get_collection_detail(
     collection_id: int,
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
     """
-    Get detailed information about a specific collection
+    Get detailed information about a specific collection with movies list
     """
-    # Get collection with movie count
-    result = (
-        db.query(
-            Collection,
-            func.count(CollectionMovie.id).label("movie_count"),
-        )
-        .outerjoin(CollectionMovie, Collection.id == CollectionMovie.collection_id)
+    # Get collection
+    collection = (
+        db.query(Collection)
         .filter(Collection.id == collection_id, Collection.user_id == user_id)
-        .group_by(Collection.id)
         .first()
     )
 
-    if not result:
+    if not collection:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Collection not found",
         )
 
-    collection, movie_count = result
+    # Get movies in this collection with JOIN
+    movies_query = (
+        db.query(UserMovie, Movie)
+        .join(CollectionMovie, UserMovie.id == CollectionMovie.user_movie_id)
+        .join(Movie, UserMovie.movie_id == Movie.id)
+        .filter(CollectionMovie.collection_id == collection_id)
+        .all()
+    )
 
-    return CollectionResponse(
+    # Build movie response list (simplified format for Frontend)
+    movies = []
+    for user_movie, movie in movies_query:
+        movies.append(SimpleMovieInCollection(
+            id=user_movie.id,  # UserMovie ID
+            title=movie.title,
+            poster_url=movie.poster_url,
+            rating=user_movie.rating,
+            year=movie.year,
+            status=user_movie.status,
+        ))
+
+    return CollectionWithMovies(
         id=collection.id,
         name=collection.name,
         description=collection.description,
@@ -93,7 +108,8 @@ async def get_collection_detail(
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
-        movie_count=movie_count,
+        movie_count=len(movies),
+        movies=movies,
         created_at=collection.created_at,
         updated_at=collection.updated_at,
     )
