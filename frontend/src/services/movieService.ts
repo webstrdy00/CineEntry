@@ -6,29 +6,21 @@ import api, { unwrapResponse } from '../lib/api';
 
 export interface UserMovieCreate {
   movie_id: number;
-  title: string;
-  original_title?: string;
-  director?: string;
-  year?: number;
-  runtime?: number;
-  genre?: string;
-  poster_url?: string;
-  backdrop_url?: string;
-  synopsis?: string;
   status: 'watching' | 'completed' | 'watchlist';
   rating?: number; // 1-5
-  review?: string;
+  one_line_review?: string;
   watch_date?: string; // ISO 8601 format
+  progress?: number; // 시청 시간(분)
   is_best_movie?: boolean;
 }
 
 export interface UserMovieUpdate {
   status?: 'watching' | 'completed' | 'watchlist';
   rating?: number;
-  review?: string;
+  one_line_review?: string;
   watch_date?: string;
-  is_best_movie?: boolean;
   progress?: number; // 시청 시간(분)
+  is_best_movie?: boolean;
 }
 
 export interface MovieSearchParams {
@@ -103,5 +95,14 @@ export const searchMovies = async (query: string) => {
  */
 export const getMovieMetadata = async (movieId: string) => {
   const response = await api.get(`/api/v1/movies/${movieId}/metadata`);
+  return unwrapResponse<any>(response);
+};
+
+/**
+ * 메타데이터로부터 영화 생성 (DB에 Movie 저장)
+ * @param metadata - 외부 API 검색 결과 (MovieSearchResult 또는 MovieMetadata)
+ */
+export const createMovieFromMetadata = async (metadata: any) => {
+  const response = await api.post('/api/v1/movies/from-metadata', metadata);
   return unwrapResponse<any>(response);
 };

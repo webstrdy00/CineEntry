@@ -47,6 +47,7 @@ export interface CollectionDetail extends Collection {
     poster_url?: string;
     rating?: number;
     year?: number;
+    status?: string;
   }>;
 }
 

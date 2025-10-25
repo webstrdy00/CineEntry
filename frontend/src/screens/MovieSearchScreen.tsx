@@ -5,7 +5,7 @@ import { useNavigation } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
-import { searchMovies, addMovie } from "../services/movieService"
+import { searchMovies, addMovie, createMovieFromMetadata } from "../services/movieService"
 
 type MovieSearchScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
@@ -45,19 +45,15 @@ export default function MovieSearchScreen() {
 
   const handleAddMovie = async (movie: any) => {
     try {
-      setAddingMovieId(movie.movie_id || movie.id)
+      // Use tmdb_id or kobis_code as loading indicator
+      setAddingMovieId(movie.tmdb_id || movie.kobis_code || movie.kmdb_id)
 
+      // Step 1: Create movie in DB from metadata (or get existing)
+      const createdMovie = await createMovieFromMetadata(movie)
+
+      // Step 2: Add movie to user's library
       await addMovie({
-        movie_id: movie.movie_id || movie.id,
-        title: movie.title,
-        original_title: movie.original_title,
-        director: movie.director,
-        year: movie.year,
-        runtime: movie.runtime,
-        genre: movie.genre,
-        poster_url: movie.poster_url,
-        backdrop_url: movie.backdrop_url,
-        synopsis: movie.synopsis,
+        movie_id: createdMovie.id,
         status: 'watchlist',
       })
 
@@ -69,7 +65,7 @@ export default function MovieSearchScreen() {
       ])
     } catch (error: any) {
       console.error('❌ 영화 추가 실패:', error)
-      if (error.response?.status === 409) {
+      if (error.response?.status === 400 || error.response?.status === 409) {
         Alert.alert('알림', '이미 추가된 영화입니다.')
       } else {
         Alert.alert('오류', '영화 추가에 실패했습니다.')
@@ -80,7 +76,7 @@ export default function MovieSearchScreen() {
   }
 
   const renderMovieItem = ({ item }: { item: any }) => {
-    const isAdding = addingMovieId === (item.movie_id || item.id)
+    const isAdding = addingMovieId === (item.tmdb_id || item.kobis_code || item.kmdb_id)
 
     return (
       <View style={styles.movieItem}>
@@ -174,7 +170,7 @@ export default function MovieSearchScreen() {
         <FlatList
           data={searchResults}
           renderItem={renderMovieItem}
-          keyExtractor={(item) => (item.movie_id || item.id).toString()}
+          keyExtractor={(item) => `${item.source}-${item.tmdb_id || item.kobis_code || item.kmdb_id}`}
           contentContainerStyle={styles.resultsList}
           showsVerticalScrollIndicator={false}
         />

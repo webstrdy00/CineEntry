@@ -54,7 +54,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     try {
       await updateMovie(id, {
         rating,
-        review,
+        one_line_review: review,
         status,
       })
       Alert.alert('성공', '변경 사항이 저장되었습니다.')
@@ -71,7 +71,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       await updateMovie(id, {
         status: 'completed',
         rating: rating || undefined,
-        review: review || undefined,
+        one_line_review: review || undefined,
       })
       setStatus('completed')
       Alert.alert('완료', '시청 완료 처리되었습니다.')
