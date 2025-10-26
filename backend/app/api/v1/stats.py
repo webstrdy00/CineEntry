@@ -13,11 +13,13 @@ from app.models.tag import Tag
 from app.schemas.stats import (
     StatsOverview, MonthlyStats, GenreStats, TagStats, BestMovie
 )
+from app.schemas.movie import MovieResponse
+from app.schemas.common import BaseResponse
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
 
-@router.get("/", response_model=StatsOverview)
+@router.get("/", response_model=BaseResponse[StatsOverview])
 async def get_user_stats(
     year: int = Query(default=datetime.now().year, description="Year for statistics"),
     db: Session = Depends(get_db),
@@ -86,7 +88,7 @@ async def get_user_stats(
     yearly_goal = user.yearly_goal if user else 100
     yearly_goal_percentage = (yearly_watched / yearly_goal * 100) if yearly_goal > 0 else 0
 
-    return StatsOverview(
+    stats_data = StatsOverview(
         total_watched=total_watched,
         total_watch_time=int(total_watch_time),
         average_rating=round(float(avg_rating), 2) if avg_rating else 0.0,
@@ -96,8 +98,14 @@ async def get_user_stats(
         yearly_goal_percentage=round(yearly_goal_percentage, 1),
     )
 
+    return BaseResponse(
+        success=True,
+        message="Stats retrieved successfully",
+        data=stats_data
+    )
 
-@router.get("/monthly", response_model=List[MonthlyStats])
+
+@router.get("/monthly", response_model=BaseResponse[List[MonthlyStats]])
 async def get_monthly_stats(
     months: int = Query(default=6, description="Number of months to fetch"),
     db: Session = Depends(get_db),
@@ -125,13 +133,19 @@ async def get_monthly_stats(
         .all()
     )
 
-    return [
+    monthly_data = [
         MonthlyStats(month=row.month, count=row.count)
         for row in reversed(results)  # Reverse to show oldest first
     ]
 
+    return BaseResponse(
+        success=True,
+        message="Monthly stats retrieved successfully",
+        data=monthly_data
+    )
 
-@router.get("/genres", response_model=List[GenreStats])
+
+@router.get("/genres", response_model=BaseResponse[List[GenreStats]])
 async def get_genre_stats(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
@@ -168,7 +182,7 @@ async def get_genre_stats(
     # Sort by count and get top genres
     sorted_genres = sorted(genre_count.items(), key=lambda x: x[1], reverse=True)
 
-    return [
+    genre_data = [
         GenreStats(
             genre=genre,
             count=count,
@@ -177,8 +191,14 @@ async def get_genre_stats(
         for genre, count in sorted_genres
     ]
 
+    return BaseResponse(
+        success=True,
+        message="Genre stats retrieved successfully",
+        data=genre_data
+    )
 
-@router.get("/tags", response_model=List[TagStats])
+
+@router.get("/tags", response_model=BaseResponse[List[TagStats]])
 async def get_tag_stats(
     limit: int = Query(default=10, description="Number of top tags to return"),
     db: Session = Depends(get_db),
@@ -202,13 +222,19 @@ async def get_tag_stats(
         .all()
     )
 
-    return [
+    tag_data = [
         TagStats(tag=row.name, count=row.count)
         for row in results
     ]
 
+    return BaseResponse(
+        success=True,
+        message="Tag stats retrieved successfully",
+        data=tag_data
+    )
 
-@router.get("/best-movies", response_model=List[BestMovie])
+
+@router.get("/best-movies", response_model=BaseResponse[List[BestMovie]])
 async def get_best_movies(
     limit: int = Query(default=5, description="Number of best movies to return"),
     db: Session = Depends(get_db),
@@ -229,19 +255,25 @@ async def get_best_movies(
         .all()
     )
 
-    return [
+    best_movies_data = [
         BestMovie(
             id=um.id,
-            title=um.movie.title_ko,
-            director=um.movie.director,
-            year=um.movie.production_year,
-            poster_url=um.movie.poster_url or "",
+            # MovieResponse의 alias를 활용하여 자동 매핑
+            **MovieResponse.model_validate(um.movie).model_dump(
+                include={"title", "director", "year", "poster_url"}
+            ),
             rating=float(um.rating) if um.rating else 0,
             review=um.one_line_review or "",
             watch_date=um.watch_date or date.today(),
         )
         for um in best_movies
     ]
+
+    return BaseResponse(
+        success=True,
+        message="Best movies retrieved successfully",
+        data=best_movies_data
+    )
 
 
 async def calculate_streak(db: Session, user_id: str) -> int:

@@ -143,7 +143,7 @@ async def create_user(
     existing_user = db.query(User).filter(User.email == user_create.email).first()
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="이미 존재하는 이메일입니다."
         )
 

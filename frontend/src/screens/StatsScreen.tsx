@@ -62,9 +62,9 @@ export default function StatsScreen() {
     )
   }
 
-  const yearlyGoal = stats.yearly_goal || 100
-  const watched = stats.yearly_progress || 0
-  const progress = (watched / yearlyGoal) * 100
+  const yearlyGoal = stats.yearly_goal
+  const watched = stats.yearly_progress
+  const progress = stats.yearly_goal_percentage
   const maxCount = monthlyData.length > 0 ? Math.max(...monthlyData.map((d) => d.count)) : 1
 
   return (
@@ -86,7 +86,7 @@ export default function StatsScreen() {
         <View style={styles.progressBarContainer}>
           <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
         </View>
-        <Text style={styles.goalPercentage}>{progress.toFixed(0)}% 달성</Text>
+        <Text style={styles.goalPercentage}>{progress.toFixed(1)}% 달성</Text>
       </View>
 
       {/* Monthly Chart */}

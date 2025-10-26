@@ -17,7 +17,7 @@ from app.services.external_api_service import external_api_service
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
-@router.get("/", response_model=List[FlatMovieResponse])
+@router.get("/", response_model=BaseResponse[List[FlatMovieResponse]])
 async def get_user_movies(
     status: Optional[str] = Query(None, description="Filter by status: watchlist, watching, completed"),
     db: Session = Depends(get_db),
@@ -67,10 +67,14 @@ async def get_user_movies(
             updated_at=um.updated_at,
         ))
 
-    return result
+    return BaseResponse(
+        success=True,
+        message="Movies retrieved successfully",
+        data=result
+    )
 
 
-@router.get("/{user_movie_id}", response_model=FlatMovieResponse)
+@router.get("/{user_movie_id}", response_model=BaseResponse[FlatMovieResponse])
 async def get_movie_detail(
     user_movie_id: int,
     db: Session = Depends(get_db),
@@ -93,7 +97,7 @@ async def get_movie_detail(
         )
 
     # Convert to flat structure
-    return FlatMovieResponse(
+    movie_data = FlatMovieResponse(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
@@ -121,8 +125,14 @@ async def get_movie_detail(
         updated_at=user_movie.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Movie retrieved successfully",
+        data=movie_data
+    )
 
-@router.post("/", response_model=FlatMovieResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/", response_model=BaseResponse[FlatMovieResponse], status_code=status.HTTP_201_CREATED)
 async def add_movie(
     user_movie_data: UserMovieCreate,
     db: Session = Depends(get_db),
@@ -174,7 +184,7 @@ async def add_movie(
     user_movie = db.query(UserMovie).options(joinedload(UserMovie.movie)).filter(UserMovie.id == user_movie.id).first()
 
     # Convert to flat structure
-    return FlatMovieResponse(
+    movie_data = FlatMovieResponse(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
@@ -202,8 +212,14 @@ async def add_movie(
         updated_at=user_movie.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Movie added successfully",
+        data=movie_data
+    )
 
-@router.put("/{user_movie_id}", response_model=FlatMovieResponse)
+
+@router.put("/{user_movie_id}", response_model=BaseResponse[FlatMovieResponse])
 async def update_movie(
     user_movie_id: int,
     update_data: UserMovieUpdate,
@@ -245,7 +261,7 @@ async def update_movie(
     user_movie = db.query(UserMovie).options(joinedload(UserMovie.movie)).filter(UserMovie.id == user_movie.id).first()
 
     # Convert to flat structure
-    return FlatMovieResponse(
+    movie_data = FlatMovieResponse(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
@@ -271,6 +287,12 @@ async def update_movie(
         # 메타데이터
         created_at=user_movie.created_at,
         updated_at=user_movie.updated_at,
+    )
+
+    return BaseResponse(
+        success=True,
+        message="Movie updated successfully",
+        data=movie_data
     )
 
 
@@ -305,7 +327,7 @@ async def delete_movie(
     )
 
 
-@router.get("/search", response_model=List[MovieSearchResult])
+@router.get("/search", response_model=BaseResponse[List[MovieSearchResult]])
 async def search_movies(
     q: str = Query(..., description="Search query"),
     user_id: str = Depends(get_current_user),
@@ -320,7 +342,11 @@ async def search_movies(
     - List of movie search results from multiple sources (KOBIS, TMDb, KMDb)
     """
     results = await external_api_service.search_movies(q)
-    return results
+    return BaseResponse(
+        success=True,
+        message="Search completed successfully",
+        data=results
+    )
 
 
 @router.get("/metadata/{source}/{id}", response_model=MovieMetadata)
@@ -358,7 +384,7 @@ async def get_movie_metadata(
     return metadata
 
 
-@router.post("/from-metadata", response_model=MovieResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/from-metadata", response_model=BaseResponse[MovieResponse], status_code=status.HTTP_201_CREATED)
 async def create_movie_from_metadata(
     metadata: MovieMetadata,
     db: Session = Depends(get_db),
@@ -384,7 +410,11 @@ async def create_movie_from_metadata(
         existing = db.query(Movie).filter(Movie.kobis_code == metadata.kobis_code).first()
 
     if existing:
-        return existing
+        return BaseResponse(
+            success=True,
+            message="Movie already exists",
+            data=existing
+        )
 
     # Create new movie with field mapping
     # MovieMetadata 필드 → Movie 모델 필드 매핑
@@ -407,4 +437,8 @@ async def create_movie_from_metadata(
     db.commit()
     db.refresh(movie)
 
-    return movie
+    return BaseResponse(
+        success=True,
+        message="Movie created successfully",
+        data=movie
+    )

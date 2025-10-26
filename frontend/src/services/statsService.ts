@@ -9,8 +9,9 @@ export interface OverallStats {
   total_watch_time: number; // 분
   average_rating: number;
   current_streak: number; // 연속 기록 일수
-  yearly_goal?: number;
+  yearly_goal: number;
   yearly_progress: number;
+  yearly_goal_percentage: number; // 백엔드에서 계산된 목표 달성률
 }
 
 export interface MonthlyData {
@@ -32,9 +33,12 @@ export interface TagStats {
 export interface BestMovie {
   id: number;
   title: string;
+  director: string;
+  year: number;
   poster_url: string;
   rating: number;
-  year?: number;
+  review: string; // one_line_review
+  watch_date: string; // ISO 8601 형식
 }
 
 // ===========================

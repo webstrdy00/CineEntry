@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 
 class MovieBase(BaseModel):
     """Movie 기본 스키마"""
-    title: str
-    original_title: Optional[str] = None
+    title: str = Field(..., alias="title_ko")
+    original_title: Optional[str] = Field(None, alias="title_original")
     director: str
-    year: int
+    year: int = Field(..., alias="production_year")
     runtime: int  # minutes
     genre: str  # comma-separated
     poster_url: Optional[str] = None
@@ -21,6 +21,10 @@ class MovieBase(BaseModel):
     kobis_code: Optional[str] = None
     tmdb_id: Optional[int] = None
     kmdb_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True  # alias와 필드명 둘 다 허용
 
 
 class MovieCreate(MovieBase):
@@ -38,9 +42,6 @@ class MovieResponse(MovieBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class UserMovieBase(BaseModel):

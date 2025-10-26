@@ -18,7 +18,7 @@ from app.services.auto_collection_service import auto_collection_service
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
-@router.get("/", response_model=List[CollectionResponse])
+@router.get("/", response_model=BaseResponse[List[CollectionResponse]])
 async def get_user_collections(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
@@ -54,10 +54,14 @@ async def get_user_collections(
         )
         result.append(collection_dict)
 
-    return result
+    return BaseResponse(
+        success=True,
+        message="Collections retrieved successfully",
+        data=result
+    )
 
 
-@router.get("/{collection_id}", response_model=CollectionWithMovies)
+@router.get("/{collection_id}", response_model=BaseResponse[CollectionWithMovies])
 async def get_collection_detail(
     collection_id: int,
     db: Session = Depends(get_db),
@@ -100,7 +104,7 @@ async def get_collection_detail(
             status=user_movie.status,
         ))
 
-    return CollectionWithMovies(
+    collection_data = CollectionWithMovies(
         id=collection.id,
         name=collection.name,
         description=collection.description,
@@ -114,8 +118,14 @@ async def get_collection_detail(
         updated_at=collection.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Collection retrieved successfully",
+        data=collection_data
+    )
 
-@router.post("/", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/", response_model=BaseResponse[CollectionResponse], status_code=status.HTTP_201_CREATED)
 async def create_collection(
     collection_data: CollectionCreate,
     db: Session = Depends(get_db),
@@ -141,7 +151,7 @@ async def create_collection(
     db.commit()
     db.refresh(collection)
 
-    return CollectionResponse(
+    collection_response = CollectionResponse(
         id=collection.id,
         name=collection.name,
         description=collection.description,
@@ -154,8 +164,14 @@ async def create_collection(
         updated_at=collection.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Collection created successfully",
+        data=collection_response
+    )
 
-@router.put("/{collection_id}", response_model=CollectionResponse)
+
+@router.put("/{collection_id}", response_model=BaseResponse[CollectionResponse])
 async def update_collection(
     collection_id: int,
     update_data: CollectionUpdate,
@@ -196,7 +212,7 @@ async def update_collection(
         CollectionMovie.collection_id == collection_id
     ).scalar()
 
-    return CollectionResponse(
+    collection_response = CollectionResponse(
         id=collection.id,
         name=collection.name,
         description=collection.description,
@@ -207,6 +223,12 @@ async def update_collection(
         movie_count=movie_count,
         created_at=collection.created_at,
         updated_at=collection.updated_at,
+    )
+
+    return BaseResponse(
+        success=True,
+        message="Collection updated successfully",
+        data=collection_response
     )
 
 
