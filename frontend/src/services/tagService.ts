@@ -58,9 +58,10 @@ export const createTag = async (data: TagCreate): Promise<Tag> => {
  * @param tagId - 태그 ID
  */
 export const addTagToMovie = async (movieId: number, tagId: number): Promise<void> => {
-  await api.post(`/api/v1/tags/movies/${movieId}/tags`, null, {
+  const response = await api.post(`/api/v1/tags/movies/${movieId}/tags`, null, {
     params: { tag_id: tagId }
   });
+  unwrapResponse<any>(response);
 };
 
 /**
@@ -69,7 +70,8 @@ export const addTagToMovie = async (movieId: number, tagId: number): Promise<voi
  * @param tagId - 태그 ID
  */
 export const removeTagFromMovie = async (movieId: number, tagId: number): Promise<void> => {
-  await api.delete(`/api/v1/tags/movies/${movieId}/tags/${tagId}`);
+  const response = await api.delete(`/api/v1/tags/movies/${movieId}/tags/${tagId}`);
+  unwrapResponse<any>(response);
 };
 
 /**
@@ -77,5 +79,6 @@ export const removeTagFromMovie = async (movieId: number, tagId: number): Promis
  * @param tagId - 태그 ID
  */
 export const deleteTag = async (tagId: number): Promise<void> => {
-  await api.delete(`/api/v1/tags/${tagId}`);
+  const response = await api.delete(`/api/v1/tags/${tagId}`);
+  unwrapResponse<any>(response);
 };

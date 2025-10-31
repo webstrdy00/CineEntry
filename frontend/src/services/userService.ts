@@ -60,5 +60,6 @@ export const createUser = async (data: UserCreate): Promise<User> => {
  * 회원 탈퇴
  */
 export const deleteUser = async (): Promise<void> => {
-  await api.delete('/api/v1/users/me');
+  const response = await api.delete('/api/v1/users/me');
+  unwrapResponse<any>(response);
 };

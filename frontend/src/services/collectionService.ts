@@ -51,6 +51,12 @@ export interface CollectionDetail extends Collection {
   }>;
 }
 
+export interface SyncResult {
+  added_count: number;
+  removed_count: number;
+  total_count: number;
+}
+
 // ===========================
 // API Functions
 // ===========================
@@ -99,7 +105,8 @@ export const updateCollection = async (
  * @param collectionId - 컬렉션 ID
  */
 export const deleteCollection = async (collectionId: number): Promise<void> => {
-  await api.delete(`/api/v1/collections/${collectionId}`);
+  const response = await api.delete(`/api/v1/collections/${collectionId}`);
+  unwrapResponse<any>(response);
 };
 
 /**
@@ -111,7 +118,8 @@ export const addMovieToCollection = async (
   collectionId: number,
   movieId: number
 ): Promise<void> => {
-  await api.post(`/api/v1/collections/${collectionId}/movies/${movieId}`);
+  const response = await api.post(`/api/v1/collections/${collectionId}/movies/${movieId}`);
+  unwrapResponse<any>(response);
 };
 
 /**
@@ -123,13 +131,16 @@ export const removeMovieFromCollection = async (
   collectionId: number,
   movieId: number
 ): Promise<void> => {
-  await api.delete(`/api/v1/collections/${collectionId}/movies/${movieId}`);
+  const response = await api.delete(`/api/v1/collections/${collectionId}/movies/${movieId}`);
+  unwrapResponse<any>(response);
 };
 
 /**
  * 자동 컬렉션 동기화
  * @param collectionId - 컬렉션 ID
+ * @returns 동기화 결과 (추가/제거/전체 개수)
  */
-export const syncAutoCollection = async (collectionId: number): Promise<void> => {
-  await api.post(`/api/v1/collections/${collectionId}/sync`);
+export const syncAutoCollection = async (collectionId: number): Promise<SyncResult> => {
+  const response = await api.post(`/api/v1/collections/${collectionId}/sync`);
+  return unwrapResponse<SyncResult>(response);
 };
