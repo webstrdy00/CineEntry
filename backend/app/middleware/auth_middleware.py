@@ -16,6 +16,8 @@ async def get_current_user(
     """
     Validate Supabase JWT token and return user_id
 
+    Supports both HS256 (secret key) and RS256 (JWKS public key) algorithms
+
     Args:
         credentials: HTTP Bearer token from Authorization header
 
@@ -28,26 +30,42 @@ async def get_current_user(
     token = credentials.credentials
 
     try:
-        # Get the signing key from JWKS based on the token's kid
-        signing_key = jwk_client.get_signing_key_from_jwt(token)
-
-        # Decode and verify JWT with the correct public key
-        payload = jwt.decode(
-            token,
-            signing_key.key,  # Use the specific key for this token's kid
-            algorithms=[settings.JWT_ALGORITHM],
-            audience=settings.JWT_AUDIENCE,
-        )
-
-        # Extract user_id from token
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user_id",
+        # 1. Try RS256 (JWKS) first - for production tokens
+        try:
+            signing_key = jwk_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256"],
+                audience=settings.JWT_AUDIENCE,
             )
+            user_id = payload.get("sub")
+            if user_id:
+                return user_id
+        except Exception as rs256_error:
+            # If RS256 fails, try HS256 with secret key
+            if settings.SUPABASE_JWT_SECRET:
+                try:
+                    payload = jwt.decode(
+                        token,
+                        settings.SUPABASE_JWT_SECRET,
+                        algorithms=["HS256"],
+                        audience=settings.JWT_AUDIENCE,
+                    )
+                    user_id = payload.get("sub")
+                    if user_id:
+                        return user_id
+                except Exception:
+                    pass
 
-        return user_id
+            # If both fail, raise the RS256 error
+            raise rs256_error
+
+        # If we get here, token is valid but missing user_id
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user_id",
+        )
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(

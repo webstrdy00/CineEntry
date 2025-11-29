@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import { supabase } from '../lib/supabase';
 import { createUser } from '../services/userService';
+import { setOnUnauthorized } from '../lib/api';
 
 interface AuthContextType {
   session: Session | null;
@@ -30,32 +31,53 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       try {
         console.log('🚀 initAuth 시작');
 
-        // 웹 환경에서 URL fragment 처리 (#access_token=...)
-        if (typeof window !== 'undefined' && window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          const access_token = hashParams.get('access_token');
-          const refresh_token = hashParams.get('refresh_token');
+        // 웹 환경에서 URL 처리
+        if (typeof window !== 'undefined') {
+          // 1. PKCE 플로우 처리 (?code=...)
+          const urlParams = new URLSearchParams(window.location.search);
+          const code = urlParams.get('code');
 
-          if (access_token && refresh_token) {
-            console.log('🌐 웹 환경: URL fragment에서 토큰 감지');
-
+          if (code) {
+            console.log('🌐 웹 환경: PKCE code 감지');
             try {
-              // Supabase에 세션 설정
-              const { data, error } = await supabase.auth.setSession({
-                access_token,
-                refresh_token,
-              });
-
+              const { data, error } = await supabase.auth.exchangeCodeForSession(code);
               if (error) {
-                console.error('❌ 세션 설정 실패:', error.message, error);
+                console.error('❌ PKCE code exchange 실패:', error.message);
               } else {
-                console.log('✅ 웹 로그인 성공:', data.user?.email);
-                console.log('📋 세션 데이터:', data.session);
-                // URL에서 fragment 제거
+                console.log('✅ 웹 PKCE 로그인 성공:', data.user?.email);
+                // URL에서 code 제거
                 window.history.replaceState({}, document.title, window.location.pathname);
               }
             } catch (err) {
-              console.error('❌ setSession 예외:', err);
+              console.error('❌ exchangeCodeForSession 예외:', err);
+            }
+          }
+
+          // 2. Implicit 플로우 처리 (#access_token=...)
+          if (window.location.hash) {
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const access_token = hashParams.get('access_token');
+            const refresh_token = hashParams.get('refresh_token');
+
+            if (access_token && refresh_token) {
+              console.log('🌐 웹 환경: Implicit 토큰 감지');
+
+              try {
+                const { data, error } = await supabase.auth.setSession({
+                  access_token,
+                  refresh_token,
+                });
+
+                if (error) {
+                  console.error('❌ 세션 설정 실패:', error.message, error);
+                } else {
+                  console.log('✅ 웹 Implicit 로그인 성공:', data.user?.email);
+                  // URL에서 fragment 제거
+                  window.history.replaceState({}, document.title, window.location.pathname);
+                }
+              } catch (err) {
+                console.error('❌ setSession 예외:', err);
+              }
             }
           }
         }
@@ -83,6 +105,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
+    // 401 처리 콜백 등록
+    setOnUnauthorized(() => {
+      if (!mounted) return;
+      console.log('🔒 401 에러 감지 - 세션 초기화');
+      setSession(null);
+      setUser(null);
+    });
+
     // 초기화
     initAuth();
 
@@ -95,10 +125,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (_event === 'SIGNED_IN' && session?.user) {
           console.log('👤 백엔드에 사용자 생성 시도:', session.user.email);
           try {
+            // display_name 우선순위: display_name > full_name > name > email 앞부분
+            const metadata = session.user.user_metadata || {};
+            const displayName =
+              metadata.display_name ||
+              metadata.full_name ||
+              metadata.name ||
+              session.user.email?.split('@')[0];
+
             const userData = {
               email: session.user.email!,
-              display_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name,
-              avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture,
+              display_name: displayName,
+              avatar_url: metadata.avatar_url || metadata.picture,
             };
             console.log('📝 사용자 데이터:', userData);
 
@@ -132,16 +170,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window === 'undefined') {
       // 모바일 환경에서만 Deep Link 처리
       const handleDeepLink = async (url: string) => {
-        if (url.includes('#access_token=') || url.includes('?access_token=')) {
-          console.log('🔗 Deep link received:', url);
+        console.log('🔗 Deep link received:', url);
 
-          // URL에서 토큰 추출
+        // 1. PKCE 플로우 처리 (?code=...)
+        if (url.includes('?code=') || url.includes('&code=')) {
+          const urlParts = url.split('?');
+          if (urlParts.length > 1) {
+            const params = new URLSearchParams(urlParts[1]);
+            const code = params.get('code');
+
+            if (code) {
+              console.log('📱 모바일: PKCE code 감지');
+              try {
+                const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+                if (error) {
+                  console.error('❌ PKCE code exchange 실패:', error.message);
+                } else {
+                  console.log('✅ 모바일 PKCE 로그인 성공:', data.user?.email);
+                }
+              } catch (err) {
+                console.error('❌ exchangeCodeForSession 예외:', err);
+              }
+              return;
+            }
+          }
+        }
+
+        // 2. Implicit 플로우 처리 (#access_token=... 또는 ?access_token=...)
+        if (url.includes('#access_token=') || url.includes('?access_token=')) {
           const params = new URLSearchParams(url.split('#')[1] || url.split('?')[1]);
           const access_token = params.get('access_token');
           const refresh_token = params.get('refresh_token');
 
           if (access_token && refresh_token) {
-            // Supabase에 세션 설정
+            console.log('📱 모바일: Implicit 토큰 감지');
             const { data, error } = await supabase.auth.setSession({
               access_token,
               refresh_token,
@@ -150,7 +212,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (error) {
               console.error('❌ 세션 설정 실패:', error.message);
             } else {
-              console.log('✅ 모바일 로그인 성공:', data.user?.email);
+              console.log('✅ 모바일 Implicit 로그인 성공:', data.user?.email);
             }
           }
         }

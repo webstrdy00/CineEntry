@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
 import LoginScreen from "./src/screens/LoginScreen"
 import EmailLoginScreen from "./src/screens/EmailLoginScreen"
 import SignUpScreen from "./src/screens/SignUpScreen"
+import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen"
 
 // Screens
 import HomeScreen from "./src/screens/HomeScreen"
@@ -92,6 +93,7 @@ function AuthStack() {
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="EmailLogin" component={EmailLoginScreen} />
       <Stack.Screen name="SignUp" component={SignUpScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </Stack.Navigator>
   )
 }

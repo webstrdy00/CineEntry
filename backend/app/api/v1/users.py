@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user_id
+from app.middleware.auth_middleware import get_current_user, get_current_user_id
 from app.models.user import User
 from app.schemas.user import UserResponse, UserUpdate, UserCreate
 from app.schemas.common import BaseResponse
@@ -112,43 +112,42 @@ async def update_current_user(
     )
 
 
-@router.post("", response_model=BaseResponse[UserResponse], status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=BaseResponse[UserResponse], status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_create: UserCreate,
     db: Session = Depends(get_db),
-    _verified: bool = Depends(verify_webhook_secret)  # Webhook Secret 검증 추가
+    user_id: str = Depends(get_current_user)  # JWT 인증으로 변경
 ):
     """
-    새 사용자 생성 (Supabase Webhook용)
+    새 사용자 생성 (자동 생성 - 로그인 시 호출)
 
-    🔒 보안: X-Webhook-Secret 헤더 검증 필요
+    🔒 보안: JWT 토큰 검증 필요 (Authorization: Bearer <token>)
 
-    Supabase Auth에서 사용자 가입 시 Webhook으로 호출
-    - email: 이메일 (필수)
-    - display_name: 사용자 이름 (선택)
-    - avatar_url: 프로필 이미지 URL (선택)
-
-    Headers:
-    - X-Webhook-Secret: Webhook 보안 시크릿 (환경변수와 일치해야 함)
+    Supabase Auth로 로그인 후 자동으로 호출
+    - JWT 토큰에서 user_id를 추출하여 사용
+    - 이미 존재하는 사용자면 기존 정보 반환 (409 아님)
 
     Example:
     ```bash
     curl -X POST http://localhost:8000/api/v1/users \\
-      -H "X-Webhook-Secret: your-secret-key" \\
+      -H "Authorization: Bearer <jwt_token>" \\
       -H "Content-Type: application/json" \\
       -d '{"email": "user@example.com"}'
     ```
     """
-    # 이메일 중복 체크
-    existing_user = db.query(User).filter(User.email == user_create.email).first()
+    # JWT에서 추출한 user_id로 기존 사용자 확인
+    existing_user = db.query(User).filter(User.id == user_id).first()
     if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="이미 존재하는 이메일입니다."
+        # 이미 존재하는 사용자 - 409 대신 200으로 기존 정보 반환
+        return BaseResponse(
+            success=True,
+            message="사용자가 이미 존재합니다.",
+            data=existing_user
         )
 
-    # 새 사용자 생성
+    # 새 사용자 생성 (JWT의 user_id 사용)
     new_user = User(
+        id=user_id,  # JWT에서 가져온 Supabase user_id 사용
         email=user_create.email,
         display_name=user_create.display_name,
         avatar_url=user_create.avatar_url,

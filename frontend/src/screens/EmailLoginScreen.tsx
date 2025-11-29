@@ -18,6 +18,27 @@ const EmailLoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const resendConfirmationEmail = async (targetEmail: string) => {
+    try {
+      setResending(true);
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: targetEmail.trim(),
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      Alert.alert('전송 완료', '인증 이메일을 다시 보냈습니다.');
+    } catch (error: any) {
+      Alert.alert('오류', error.message);
+    } finally {
+      setResending(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -34,6 +55,22 @@ const EmailLoginScreen = ({ navigation }: any) => {
       });
 
       if (error) {
+        // 이메일 미인증 처리
+        if (error.message?.toLowerCase().includes('email not confirmed')) {
+          Alert.alert(
+            '이메일 인증 필요',
+            '이메일 인증이 완료되지 않았습니다. 이메일을 확인해주세요.',
+            [
+              { text: '취소', style: 'cancel' },
+              {
+                text: resending ? '재전송 중...' : '인증 메일 재전송',
+                onPress: () => resendConfirmationEmail(email),
+              },
+            ]
+          );
+          return;
+        }
+
         throw error;
       }
 
@@ -78,22 +115,22 @@ const EmailLoginScreen = ({ navigation }: any) => {
             editable={!loading}
           />
 
-          <TextInput
-            style={styles.input}
-            placeholder="비밀번호"
-            placeholderTextColor="#999"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!loading}
-          />
+        <TextInput
+          style={styles.input}
+          placeholder="비밀번호"
+          placeholderTextColor="#999"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          editable={!loading}
+        />
 
-          <TouchableOpacity
-            style={styles.forgotPassword}
-            onPress={() => Alert.alert('안내', '비밀번호 재설정 기능은 준비 중입니다.')}
-          >
-            <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.forgotPassword}
+          onPress={() => navigation.navigate('ForgotPassword')}
+        >
+          <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
+        </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}

@@ -33,6 +33,12 @@ const api = axios.create({
   },
 });
 
+// 401 처리용 콜백 (AuthContext에서 설정)
+let onUnauthorized: (() => void) | null = null;
+export const setOnUnauthorized = (callback: () => void) => {
+  onUnauthorized = callback;
+};
+
 // Request Interceptor: JWT 토큰 자동 추가 및 trailing slash 처리
 api.interceptors.request.use(
   async (config) => {
@@ -74,8 +80,17 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401) {
       // 토큰 만료 또는 유효하지 않음
-      console.log('인증 오류: 다시 로그인 필요');
-      // TODO: 로그인 화면으로 이동
+      console.log('🔒 인증 오류: 세션 만료 - 자동 로그아웃');
+
+      try {
+        await supabase.auth.signOut();
+      } catch (signOutError) {
+        console.error('❌ Supabase 로그아웃 실패:', signOutError);
+      }
+
+      if (onUnauthorized) {
+        onUnauthorized();
+      }
     }
 
     return Promise.reject(error);

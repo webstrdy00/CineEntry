@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
-import api from '../lib/api';
 import { COLORS } from '../constants/colors';
 
 const SignUpScreen = ({ navigation }: any) => {
@@ -44,9 +43,16 @@ const SignUpScreen = ({ navigation }: any) => {
 
     try {
       // 1. Supabase Auth에 사용자 등록
+      // display_name을 user_metadata에 저장하여 로그인 시 AuthContext에서 사용
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
+        options: {
+          data: {
+            display_name: displayName.trim(),
+            full_name: displayName.trim(),
+          },
+        },
       });
 
       if (authError) {
@@ -58,31 +64,14 @@ const SignUpScreen = ({ navigation }: any) => {
       }
 
       console.log('✅ Supabase 사용자 생성 완료:', authData.user.id);
+      // NOTE: Backend DB 사용자 생성은 로그인 시 AuthContext에서 자동으로 처리됨
 
-      // 2. Backend DB에 사용자 추가
-      try {
-        const response = await api.post('/api/v1/users', {
-          email: email.trim(),
-          display_name: displayName.trim(),
-          avatar_url: null,
-        });
-
-        console.log('✅ Backend DB 사용자 추가 완료');
-      } catch (dbError: any) {
-        console.warn('⚠️ Backend DB 추가 실패 (수동 추가 필요):', dbError.message);
-        // Supabase Auth는 성공했으므로 계속 진행
-      }
-
-      Alert.alert(
-        '회원가입 성공!',
-        '로그인 화면으로 이동합니다.',
-        [
-          {
-            text: '확인',
-            onPress: () => navigation.navigate('Login'),
-          },
-        ]
-      );
+      Alert.alert('회원가입 성공!', '인증 이메일을 발송했습니다. 이메일을 확인하고 인증을 완료해주세요.', [
+        {
+          text: '확인',
+          onPress: () => navigation.navigate('Login'),
+        },
+      ]);
     } catch (error: any) {
       console.error('❌ 회원가입 실패:', error.message);
       Alert.alert('회원가입 실패', error.message);
