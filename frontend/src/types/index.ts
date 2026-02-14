@@ -14,7 +14,9 @@ export interface Movie {
   id: number
   title: string
   original_title?: string
+  poster?: string
   poster_url: string
+  backdrop?: string
   backdrop_url?: string
   year?: number
   runtime?: number // minutes
@@ -109,11 +111,14 @@ export interface CollectionDetail extends Collection {
 // ============================================
 
 export type RootStackParamList = {
+  Login: undefined
+  EmailLogin: undefined
+  SignUp: undefined
+  ForgotPassword: undefined
   Main: undefined
   MovieDetail: { id: number }
   MovieSearch: undefined
   CollectionDetail: { id: number }
-  ForgotPassword: undefined
 }
 
 export type TabParamList = {

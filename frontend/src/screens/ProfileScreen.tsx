@@ -11,6 +11,7 @@ import { getOverallStats } from "../services/statsService"
 import { getCollections } from "../services/collectionService"
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type IoniconName = keyof typeof Ionicons.glyphMap
 
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>()
@@ -75,7 +76,7 @@ export default function ProfileScreen() {
     )
   }
 
-  const menuItems = [
+  const menuItems: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "person-outline", label: "프로필 수정", action: "editProfile" },
     { icon: "notifications-outline", label: "알림 설정", action: "notifications" },
     { icon: "color-palette-outline", label: "테마 설정", action: "theme" },
@@ -94,10 +95,10 @@ export default function ProfileScreen() {
       {/* Profile Card */}
       <View style={styles.profileCard}>
         <Image
-          source={{ uri: user?.avatar_url || authUser?.user_metadata?.avatar_url || "https://i.pravatar.cc/150?img=12" }}
+          source={{ uri: user?.avatar_url || authUser?.avatar_url || "https://i.pravatar.cc/150?img=12" }}
           style={styles.avatar}
         />
-        <Text style={styles.userName}>{user?.display_name || authUser?.user_metadata?.full_name || "영화 애호가"}</Text>
+        <Text style={styles.userName}>{user?.display_name || authUser?.display_name || "영화 애호가"}</Text>
         <Text style={styles.userEmail}>{user?.email || authUser?.email || "movie@lover.com"}</Text>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>

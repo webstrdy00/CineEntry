@@ -16,7 +16,11 @@ export interface TagCreate {
 }
 
 export interface PopularTag {
-  tag: string;
+  id: number;
+  name: string;
+  is_predefined: boolean;
+  user_id?: string | null;
+  created_at: string;
   count: number;
 }
 

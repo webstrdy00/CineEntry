@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { useNavigation } from "@react-navigation/native"
+import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { LinearGradient } from "expo-linear-gradient"
-import { useState, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { COLORS } from "../constants/colors"
 import MovieCard from "../components/MovieCard"
 import StatCard from "../components/StatCard"
@@ -33,12 +33,7 @@ export default function HomeScreen() {
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
   const [bestMoviesList, setBestMoviesList] = useState<any[]>([])
 
-  // Load data
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
 
@@ -69,13 +64,25 @@ export default function HomeScreen() {
       setStats(statsData || defaultStats)
       setWatchingMovies(watchingData)
       setWatchlistMovies(watchlistData)
-      setBestMoviesList(bestMoviesData)
+      setBestMoviesList(
+        (bestMoviesData || []).map((movie: any) => ({
+          ...movie,
+          poster: movie.poster ?? movie.poster_url ?? "",
+        }))
+      )
     } catch (error: any) {
       console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // 홈 화면 포커스 시마다 최신 데이터 재조회
+  useFocusEffect(
+    useCallback(() => {
+      loadData()
+    }, [loadData])
+  )
 
   // 로딩 중
   if (loading) {
@@ -87,9 +94,6 @@ export default function HomeScreen() {
     )
   }
 
-  // 현재 보는 영화 (첫 번째)
-  const currentMovie = watchingMovies.length > 0 ? watchingMovies[0] : null
-
   // 연간 목표 데이터
   const yearlyGoal = {
     target: stats.yearly_goal || 100,
@@ -99,47 +103,63 @@ export default function HomeScreen() {
   const yearlyProgress = (yearlyGoal.current / yearlyGoal.target) * 100
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>어서오세요 :)</Text>
-          <Text style={styles.subtitle}>오늘은 무슨 영화를 보셨나요?</Text>
+    <View style={styles.container}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>어서오세요 :)</Text>
+            <Text style={styles.subtitle}>오늘은 무슨 영화를 보셨나요?</Text>
+          </View>
         </View>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Ionicons name="settings-outline" size={24} color={COLORS.lightGray} />
-        </TouchableOpacity>
-      </View>
 
-      {/* Current Movie Card */}
-      {currentMovie ? (
-        <TouchableOpacity
-          style={styles.currentMovieCard}
-          onPress={() => navigation.navigate("MovieDetail", { id: currentMovie.id })}
-        >
-          <LinearGradient colors={[COLORS.deepGray, COLORS.darkNavy]} style={styles.currentMovieGradient}>
-            <View style={styles.currentMovieContent}>
-              <Image source={{ uri: currentMovie.poster }} style={styles.currentMoviePoster} />
-              <View style={styles.currentMovieInfo}>
-                <Text style={styles.currentMovieLabel}>현재 보고 있는 영화</Text>
-                <Text style={styles.currentMovieTitle}>{currentMovie.title}</Text>
-                <View style={styles.progressContainer}>
-                  <Text style={styles.progressText}>
-                    {currentMovie.progress || 0}분 / {currentMovie.runtime || 0}분
-                  </Text>
-                  <View style={styles.progressBar}>
-                    <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${((currentMovie.progress || 0) / (currentMovie.runtime || 1)) * 100}%` },
-                      ]}
-                    />
+      {/* Currently Watching Section */}
+      {watchingMovies.length > 0 ? (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>현재 보고 있는 영화</Text>
+            <Text style={styles.watchingCount}>{watchingMovies.length}편</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currentMovieList}>
+            {watchingMovies.map((watchingMovie) => (
+              <TouchableOpacity
+                key={watchingMovie.id}
+                style={styles.currentMovieCard}
+                onPress={() => navigation.navigate("MovieDetail", { id: watchingMovie.id })}
+              >
+                <LinearGradient colors={[COLORS.deepGray, COLORS.darkNavy]} style={styles.currentMovieGradient}>
+                  <View style={styles.currentMovieContent}>
+                    <Image source={{ uri: watchingMovie.poster }} style={styles.currentMoviePoster} />
+                    <View style={styles.currentMovieInfo}>
+                      <Text style={styles.currentMovieLabel}>보는 중</Text>
+                      <Text style={styles.currentMovieTitle} numberOfLines={2}>
+                        {watchingMovie.title}
+                      </Text>
+                      <View style={styles.progressContainer}>
+                        <Text style={styles.progressText}>
+                          {watchingMovie.progress || 0}분 / {watchingMovie.runtime || 0}분
+                        </Text>
+                        <View style={styles.progressBar}>
+                          <View
+                            style={[
+                              styles.progressFill,
+                              {
+                                width: `${Math.min(
+                                  100,
+                                  ((watchingMovie.progress || 0) / (watchingMovie.runtime || 1)) * 100
+                                )}%`,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              </View>
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
+                </LinearGradient>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       ) : (
         <View style={styles.emptyCard}>
           <Ionicons name="film-outline" size={40} color={COLORS.lightGray} />
@@ -216,28 +236,40 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Watchlist Section */}
-      {watchlistMovies.length > 0 && (
+        {/* Watchlist Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>보고 싶은 영화</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>더 보기</Text>
-            </TouchableOpacity>
+            {watchlistMovies.length > 0 && (
+              <TouchableOpacity>
+                <Text style={styles.seeAllText}>더 보기</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.movieList}>
-            {watchlistMovies.map((movie) => (
-              <MovieCard
-                key={movie.id}
-                movie={{ ...movie, status: "watchlist" as const }}
-                onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
 
-      <View style={styles.bottomPadding} />
+          {watchlistMovies.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.movieList}>
+              {watchlistMovies.map((movie) => (
+                <MovieCard
+                  key={movie.id}
+                  movie={{ ...movie, status: "watchlist" as const }}
+                  onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
+                />
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.watchlistEmptyCard}>
+              <Ionicons name="bookmark-outline" size={36} color={COLORS.lightGray} />
+              <Text style={styles.emptyText}>보고 싶은 영화가 없습니다</Text>
+              <TouchableOpacity onPress={() => navigation.navigate("MovieSearch")}>
+                <Text style={styles.emptyLink}>영화 추가하기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.bottomPadding} />
+      </ScrollView>
 
       {/* Floating Action Button */}
       <TouchableOpacity
@@ -247,7 +279,7 @@ export default function HomeScreen() {
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   )
 }
 
@@ -257,9 +289,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkNavy,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
@@ -274,14 +303,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.lightGray,
   },
-  settingsButton: {
-    padding: 8,
-  },
   currentMovieCard: {
-    marginHorizontal: 20,
-    marginBottom: 24,
+    width: width - 72,
     borderRadius: 16,
     overflow: "hidden",
+  },
+  currentMovieList: {
+    paddingHorizontal: 20,
+    gap: 12,
   },
   emptyCard: {
     marginHorizontal: 20,
@@ -329,6 +358,11 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: COLORS.white,
     marginBottom: 12,
+  },
+  watchingCount: {
+    fontSize: 14,
+    color: COLORS.gold,
+    fontWeight: "700",
   },
   progressContainer: {
     marginTop: 8,
@@ -436,7 +470,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   bottomPadding: {
-    height: 20,
+    height: 120,
+  },
+  watchlistEmptyCard: {
+    marginHorizontal: 20,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 16,
+    padding: 28,
+    alignItems: "center",
   },
   floatingButton: {
     position: "absolute",

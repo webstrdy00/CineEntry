@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from app.database import get_db
@@ -15,6 +16,17 @@ from app.schemas.common import BaseResponse
 from app.services.external_api_service import external_api_service
 
 router = APIRouter(prefix="/movies", tags=["movies"])
+
+
+def build_tag_items(user_movie: UserMovie) -> list[dict]:
+    """UserMovie 관계에서 태그 요약 목록을 생성."""
+    if not getattr(user_movie, "movie_tags", None):
+        return []
+    return [
+        {"id": mt.tag.id, "name": mt.tag.name}
+        for mt in user_movie.movie_tags
+        if mt.tag is not None
+    ]
 
 
 def normalize_status_input(status: Optional[str]) -> Optional[str]:
@@ -52,7 +64,7 @@ async def get_user_movies(
         else:
             query = query.filter(UserMovie.status == normalized_status)
 
-    user_movies = query.order_by(UserMovie.created_at.desc()).all()
+    user_movies = query.order_by(UserMovie.updated_at.desc(), UserMovie.created_at.desc()).all()
 
     # Convert to flat structure
     result = []
@@ -125,7 +137,10 @@ async def get_movie_detail(
     """
     user_movie = (
         db.query(UserMovie)
-        .options(joinedload(UserMovie.movie))
+        .options(
+            joinedload(UserMovie.movie),
+            joinedload(UserMovie.movie_tags).joinedload(MovieTag.tag),
+        )
         .filter(UserMovie.user_id == user_id, UserMovie.id == user_movie_id)
         .first()
     )
@@ -159,6 +174,7 @@ async def get_movie_detail(
         genre=user_movie.movie.genre,
         director=user_movie.movie.director,
         synopsis=user_movie.movie.synopsis,
+        tags=build_tag_items(user_movie),
 
         # 메타데이터
         created_at=user_movie.created_at,
@@ -224,7 +240,15 @@ async def add_movie(
     db.refresh(user_movie)
 
     # Load movie relationship
-    user_movie = db.query(UserMovie).options(joinedload(UserMovie.movie)).filter(UserMovie.id == user_movie.id).first()
+    user_movie = (
+        db.query(UserMovie)
+        .options(
+            joinedload(UserMovie.movie),
+            joinedload(UserMovie.movie_tags).joinedload(MovieTag.tag),
+        )
+        .filter(UserMovie.id == user_movie.id)
+        .first()
+    )
 
     # Convert to flat structure
     movie_data = FlatMovieResponse(
@@ -249,6 +273,7 @@ async def add_movie(
         genre=user_movie.movie.genre,
         director=user_movie.movie.director,
         synopsis=user_movie.movie.synopsis,
+        tags=build_tag_items(user_movie),
 
         # 메타데이터
         created_at=user_movie.created_at,
@@ -426,12 +451,19 @@ async def create_movie_from_metadata(
     Returns:
     - Created movie (returns existing if already in DB)
     """
-    # Check if movie already exists
+    # Check if movie already exists by external IDs (tmdb/kobis/kmdb)
     existing = None
-    if metadata.tmdb_id:
-        existing = db.query(Movie).filter(Movie.tmdb_id == metadata.tmdb_id).first()
-    elif metadata.kobis_code:
-        existing = db.query(Movie).filter(Movie.kobis_code == metadata.kobis_code).first()
+    duplicate_filters = []
+
+    if metadata.tmdb_id is not None:
+        duplicate_filters.append(Movie.tmdb_id == metadata.tmdb_id)
+    if metadata.kobis_code:
+        duplicate_filters.append(Movie.kobis_code == metadata.kobis_code)
+    if metadata.kmdb_id:
+        duplicate_filters.append(Movie.kmdb_id == metadata.kmdb_id)
+
+    if duplicate_filters:
+        existing = db.query(Movie).filter(or_(*duplicate_filters)).first()
 
     if existing:
         return BaseResponse(

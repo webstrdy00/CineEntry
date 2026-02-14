@@ -3,6 +3,7 @@
 KOBIS, TMDb, KMDb API를 사용하여 영화 메타데이터 검색
 """
 import httpx
+import re
 from typing import List, Optional, Any, Callable, TypeVar
 from functools import wraps
 from app.config import settings
@@ -124,6 +125,95 @@ def safe_int(value: Any, default: int = 0) -> int:
 class ExternalAPIService:
     """외부 API 통합 서비스"""
 
+    @staticmethod
+    def _normalize_text(value: Optional[str]) -> str:
+        """검색 비교를 위한 텍스트 정규화."""
+        if not value:
+            return ""
+        lowered = value.lower().strip()
+        # 공백/특수문자 노이즈 제거
+        return re.sub(r"[\s\W_]+", "", lowered)
+
+    def _score_result(self, query: str, result: MovieSearchResult) -> int:
+        """검색어 대비 결과 관련도 점수 계산."""
+        q = self._normalize_text(query)
+        title = self._normalize_text(result.title)
+        original_title = self._normalize_text(result.original_title)
+        director = self._normalize_text(result.director)
+
+        score = 0
+
+        if q and (title == q or original_title == q):
+            score += 120
+        elif q and (title.startswith(q) or original_title.startswith(q)):
+            score += 80
+        elif q and (q in title or q in original_title):
+            score += 50
+
+        if q and director and q in director:
+            score += 20
+
+        # 품질 보정
+        if result.poster_url:
+            score += 8
+        if result.synopsis:
+            score += 4
+        if result.year and result.year > 0:
+            score += 3
+        if result.director:
+            score += 3
+
+        # 데이터 소스 신뢰도 가중치(동점 시 정렬 안정화 목적)
+        source_weight = {
+            "tmdb": 6,
+            "kobis": 5,
+            "kmdb": 4,
+        }
+        score += source_weight.get(result.source, 0)
+
+        return score
+
+    def _rank_and_dedupe(self, query: str, results: List[MovieSearchResult]) -> List[MovieSearchResult]:
+        """결과 정렬 및 중복 제거."""
+        if not results:
+            return []
+
+        deduped: dict[str, tuple[int, MovieSearchResult]] = {}
+
+        for result in results:
+            title_key = self._normalize_text(result.title)
+            original_key = self._normalize_text(result.original_title)
+            year_key = str(result.year) if result.year and result.year > 0 else "0"
+            # 동일 타이틀/년도 결과를 대표값 1개로 통합
+            dedupe_key = f"{title_key or original_key}:{year_key}"
+
+            score = self._score_result(query, result)
+
+            if dedupe_key not in deduped:
+                deduped[dedupe_key] = (score, result)
+                continue
+
+            current_score, current_result = deduped[dedupe_key]
+            # 점수 우선, 동점이면 포스터가 있는 결과 우선
+            if score > current_score or (
+                score == current_score and not current_result.poster_url and result.poster_url
+            ):
+                deduped[dedupe_key] = (score, result)
+
+        ranked = sorted(
+            deduped.values(),
+            key=lambda item: (
+                item[0],
+                1 if item[1].poster_url else 0,
+                1 if item[1].synopsis else 0,
+                item[1].year if item[1].year else 0,
+            ),
+            reverse=True,
+        )
+
+        # 너무 긴 목록은 상위 결과만 반환
+        return [item[1] for item in ranked[:30]]
+
     async def search_movies(self, query: str) -> List[MovieSearchResult]:
         """
         여러 외부 API에서 영화 검색
@@ -134,18 +224,22 @@ class ExternalAPIService:
         Returns:
             영화 검색 결과 리스트
         """
+        normalized_query = query.strip()
+        if not normalized_query:
+            return []
+
         results: List[MovieSearchResult] = []
 
         # KOBIS에서 검색 (한국 영화)
         try:
-            kobis_results = await self.search_kobis(query)
+            kobis_results = await self.search_kobis(normalized_query)
             results.extend(kobis_results)
         except Exception as e:
             print(f"[search] KOBIS 검색 실패: {e}")
 
         # TMDb에서 검색 (국제 영화)
         try:
-            tmdb_results = await self.search_tmdb(query)
+            tmdb_results = await self.search_tmdb(normalized_query)
             results.extend(tmdb_results)
         except Exception as e:
             print(f"[search] TMDb 검색 실패: {e}")
@@ -153,16 +247,16 @@ class ExternalAPIService:
         # KMDb에서 검색 (한국 영화 추가 정보) - 키가 있을 때만
         if settings.KMDB_API_KEY and settings.KMDB_API_KEY != "your_kmdb_api_key_here":
             try:
-                kmdb_results = await self.search_kmdb(query)
+                kmdb_results = await self.search_kmdb(normalized_query)
                 results.extend(kmdb_results)
             except Exception as e:
                 print(f"[search] KMDb 검색 실패: {e}")
         else:
             print("[search] KMDb API 키가 없어 KMDb 검색을 건너뜁니다.")
 
-        return results
+        return self._rank_and_dedupe(normalized_query, results)
 
-    @cache_external_api(prefix="kobis:search", ttl=86400)
+    @cache_external_api(prefix="kobis:search:v2", ttl=86400)
     async def search_kobis(self, query: str) -> List[MovieSearchResult]:
         """
         KOBIS API로 영화 검색 (한국영화진흥위원회)
@@ -190,7 +284,7 @@ class ExternalAPIService:
             for movie in movies:
                 # Get director
                 directors = movie.get("directors", [])
-                director = directors[0].get("peopleNm") if directors else "Unknown"
+                director = directors[0].get("peopleNm") if directors else None
 
                 result = MovieSearchResult(
                     title=movie.get("movieNm", ""),
@@ -210,7 +304,7 @@ class ExternalAPIService:
 
             return results
 
-    @cache_external_api(prefix="tmdb:search", ttl=86400)
+    @cache_external_api(prefix="tmdb:search:v2", ttl=86400)
     async def search_tmdb(self, query: str) -> List[MovieSearchResult]:
         """
         TMDb API로 영화 검색 (The Movie Database)
@@ -228,6 +322,9 @@ class ExternalAPIService:
                     "api_key": settings.TMDB_API_KEY,
                     "query": query,
                     "language": "ko-KR",
+                    "region": "KR",
+                    "include_adult": "false",
+                    "page": 1,
                 }
             )
             response.raise_for_status()
@@ -248,7 +345,7 @@ class ExternalAPIService:
                 result = MovieSearchResult(
                     title=movie.get("title", ""),
                     original_title=movie.get("original_title"),
-                    director="Unknown",  # TMDb search doesn't include director
+                    director=None,  # TMDb search doesn't include director
                     year=year,
                     runtime=None,  # Need to fetch details for runtime
                     genre=None,  # Genre requires separate API call
@@ -263,7 +360,7 @@ class ExternalAPIService:
 
             return results
 
-    @cache_external_api(prefix="kmdb:search", ttl=86400)
+    @cache_external_api(prefix="kmdb:search:v2", ttl=86400)
     async def search_kmdb(self, query: str) -> List[MovieSearchResult]:
         """
         KMDb API로 영화 검색 (한국영화데이터베이스)
@@ -293,7 +390,7 @@ class ExternalAPIService:
             for movie in movies:
                 # Get director
                 directors = movie.get("directors", {}).get("director", [])
-                director = directors[0].get("directorNm") if directors else "Unknown"
+                director = directors[0].get("directorNm") if directors else None
 
                 # Get year
                 year_str = movie.get("prodYear", "0")
@@ -372,7 +469,7 @@ class ExternalAPIService:
             credits = movie.get("credits", {})
             crew = credits.get("crew", [])
             directors = [c for c in crew if c.get("job") == "Director"]
-            director = directors[0].get("name") if directors else "Unknown"
+            director = directors[0].get("name") if directors else None
 
             # Get release year
             release_date = movie.get("release_date", "")
@@ -432,7 +529,7 @@ class ExternalAPIService:
 
             # Get director
             directors = movie.get("directors", [])
-            director = directors[0].get("peopleNm") if directors else "Unknown"
+            director = directors[0].get("peopleNm") if directors else None
 
             # Get year
             year_str = movie.get("prdtYear", "0")

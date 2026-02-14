@@ -264,7 +264,7 @@ async def get_best_movies(
             ),
             rating=float(um.rating) if um.rating else 0,
             review=um.one_line_review or "",
-            watch_date=um.watch_date or date.today(),
+            watch_date=um.watch_date,
         )
         for um in best_movies
     ]

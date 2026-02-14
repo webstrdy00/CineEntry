@@ -3,7 +3,8 @@ Movie Pydantic schemas
 영화 관련 스키마
 """
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
+from uuid import UUID
 from pydantic import BaseModel, Field
 
 
@@ -74,7 +75,7 @@ class UserMovieUpdate(BaseModel):
 class UserMovieResponse(UserMovieBase):
     """UserMovie 응답 스키마 (중첩 구조)"""
     id: int
-    user_id: str
+    user_id: UUID
     movie: MovieResponse
     created_at: datetime
     updated_at: datetime
@@ -83,11 +84,17 @@ class UserMovieResponse(UserMovieBase):
         from_attributes = True
 
 
+class MovieTagItem(BaseModel):
+    """영화 상세용 태그 요약 스키마"""
+    id: int
+    name: str
+
+
 class FlatMovieResponse(BaseModel):
     """Frontend 호환 평평한 영화 응답 스키마"""
     # UserMovie 필드
     id: int  # UserMovie ID
-    user_id: str
+    user_id: UUID
     status: str
     rating: Optional[float] = None
     review: Optional[str] = None  # one_line_review
@@ -106,6 +113,7 @@ class FlatMovieResponse(BaseModel):
     genre: Optional[str] = None
     director: Optional[str] = None
     synopsis: Optional[str] = None
+    tags: List[MovieTagItem] = Field(default_factory=list)
 
     # 메타데이터
     created_at: datetime
@@ -116,7 +124,7 @@ class MovieSearchResult(BaseModel):
     """외부 API 영화 검색 결과"""
     title: str
     original_title: Optional[str] = None
-    director: str
+    director: Optional[str] = None
     year: int
     runtime: Optional[int] = None
     genre: Optional[str] = None

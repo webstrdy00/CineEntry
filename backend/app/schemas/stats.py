@@ -1,51 +1,47 @@
 """
 Stats Pydantic schemas
-통계 관련 스키마
 """
 from datetime import date
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class StatsOverview(BaseModel):
-    """전체 통계 개요"""
     total_watched: int
-    total_watch_time: int  # minutes
+    total_watch_time: int
     average_rating: float
-    current_streak: int  # days
+    current_streak: int
     yearly_goal: int
-    yearly_progress: int  # 올해 본 영화 수
+    yearly_progress: int
     yearly_goal_percentage: float
 
 
 class MonthlyStats(BaseModel):
-    """월별 통계"""
-    month: str  # "2025-01"
+    month: str
     count: int
 
 
 class GenreStats(BaseModel):
-    """장르 통계"""
     genre: str
     count: int
     percentage: float
 
 
 class TagStats(BaseModel):
-    """태그 통계"""
     tag: str
     count: int
 
 
 class BestMovie(BaseModel):
-    """인생 영화"""
     id: int
     title: str
-    director: str
-    year: int
-    poster_url: str
-    rating: int
+    director: Optional[str] = None
+    year: Optional[int] = None
+    poster_url: Optional[str] = None
+    rating: float
     review: str
-    watch_date: date
+    watch_date: Optional[date] = None
 
     class Config:
         from_attributes = True

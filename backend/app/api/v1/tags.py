@@ -92,9 +92,9 @@ async def get_popular_tags(
             "id": tag.id,
             "name": tag.name,
             "is_predefined": tag.is_predefined,
-            "user_id": str(tag.user_id) if tag.user_id else None,
+            "user_id": tag.user_id,
             "created_at": tag.created_at,
-            "usage_count": count
+            "count": count
         }
         result.append(TagWithCount(**tag_dict))
 
@@ -191,9 +191,14 @@ async def add_tag_to_movie(
     ).first()
 
     if existing_movie_tag:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 추가된 태그입니다."
+        return BaseResponse(
+            success=True,
+            message="이미 추가된 태그입니다.",
+            data={
+                "user_movie_id": user_movie_id,
+                "tag_id": tag_id,
+                "tag_name": tag.name
+            }
         )
 
     # 영화에 태그 추가

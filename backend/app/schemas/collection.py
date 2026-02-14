@@ -4,6 +4,7 @@ Collection Pydantic schemas
 """
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING, List
+from uuid import UUID
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class CollectionUpdate(BaseModel):
 class CollectionResponse(CollectionBase):
     """Collection 응답 스키마"""
     id: int
-    user_id: str
+    user_id: UUID
     movie_count: int  # 영화 개수 (JOIN으로 계산)
     created_at: datetime
     updated_at: datetime

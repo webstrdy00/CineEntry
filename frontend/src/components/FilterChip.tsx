@@ -30,6 +30,7 @@ export default function FilterChip({ label, isActive, onPress }: FilterChipProps
 
 const styles = StyleSheet.create({
   container: {
+    alignSelf: "flex-start",
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,

@@ -5,14 +5,12 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { Ionicons } from "@expo/vector-icons"
 import { ActivityIndicator, View, StyleSheet } from "react-native"
 
-// Auth
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
 import LoginScreen from "./src/screens/LoginScreen"
 import EmailLoginScreen from "./src/screens/EmailLoginScreen"
 import SignUpScreen from "./src/screens/SignUpScreen"
 import ForgotPasswordScreen from "./src/screens/ForgotPasswordScreen"
 
-// Screens
 import HomeScreen from "./src/screens/HomeScreen"
 import MoviesScreen from "./src/screens/MoviesScreen"
 import StatsScreen from "./src/screens/StatsScreen"
@@ -21,10 +19,7 @@ import MovieDetailScreen from "./src/screens/MovieDetailScreen"
 import MovieSearchScreen from "./src/screens/MovieSearchScreen"
 import CollectionDetailScreen from "./src/screens/CollectionDetailScreen"
 
-// Types
 import type { RootStackParamList, TabParamList } from "./src/types"
-
-// Colors
 import { COLORS } from "./src/constants/colors"
 
 const Tab = createBottomTabNavigator<TabParamList>()
@@ -86,7 +81,6 @@ function TabNavigator() {
   )
 }
 
-// Auth Stack (로그인 전)
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -98,7 +92,6 @@ function AuthStack() {
   )
 }
 
-// Main Stack (로그인 후)
 function MainStack() {
   return (
     <Stack.Navigator
@@ -133,7 +126,6 @@ function MainStack() {
   )
 }
 
-// Root Navigator
 function RootNavigator() {
   const { isAuthenticated, loading } = useAuth()
 
@@ -153,7 +145,6 @@ function RootNavigator() {
   )
 }
 
-// App Component
 export default function App() {
   return (
     <AuthProvider>

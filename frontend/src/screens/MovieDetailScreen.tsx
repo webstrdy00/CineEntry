@@ -1,32 +1,30 @@
-import { useState, useEffect } from "react"
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native"
+import { useCallback, useEffect, useLayoutEffect, useState } from "react"
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 import { getMovieDetail, updateMovie, deleteMovie } from "../services/movieService"
-import { getTags, addTagToMovie, removeTagFromMovie, createTag } from "../services/tagService"
+import { getTags, addTagToMovie, removeTagFromMovie } from "../services/tagService"
 
 type MovieDetailScreenProps = NativeStackScreenProps<RootStackParamList, "MovieDetail">
 
 export default function MovieDetailScreen({ route, navigation }: MovieDetailScreenProps) {
   const { id } = route.params
 
-  // State
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [movie, setMovie] = useState<any>(null)
   const [rating, setRating] = useState(0)
   const [review, setReview] = useState("")
-  const [status, setStatus] = useState<'watching' | 'completed' | 'watchlist'>('watchlist')
+  const [status, setStatus] = useState<"watching" | "completed" | "watchlist">("watchlist")
   const [allTags, setAllTags] = useState<any[]>([])
   const [movieTags, setMovieTags] = useState<any[]>([])
+  const [originalTagIds, setOriginalTagIds] = useState<number[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       const [movieData, tagsData] = await Promise.all([
@@ -34,115 +32,163 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         getTags().catch(() => []),
       ])
 
+      const currentTags = (movieData.tags || [])
+        .map((tag: any) => ({ ...tag, id: Number(tag.id) }))
+        .filter((tag: any) => Number.isFinite(tag.id))
       setMovie(movieData)
       setRating(movieData.rating || 0)
       setReview(movieData.review || "")
-      setStatus(movieData.status || 'watchlist')
-      setMovieTags(movieData.tags || [])
+      setStatus(movieData.status || "watchlist")
+      setMovieTags(currentTags)
+      setOriginalTagIds(currentTags.map((tag: any) => tag.id))
       setAllTags(tagsData)
     } catch (error) {
-      console.error('❌ MovieDetailScreen 데이터 로드 실패:', error)
-      Alert.alert('오류', '영화 정보를 불러올 수 없습니다.')
+      console.error("MovieDetailScreen 데이터 로드 실패:", error)
+      Alert.alert("오류", "영화 정보를 불러오지 못했습니다.")
       navigation.goBack()
     } finally {
       setLoading(false)
     }
-  }
+  }, [id, navigation])
 
-  // 영화 정보 저장 (별점, 리뷰, 상태)
-  const handleSave = async () => {
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const handleSave = useCallback(async () => {
+    if (isSaving) return
+
     try {
+      setIsSaving(true)
+
       await updateMovie(id, {
         rating,
         one_line_review: review,
         status,
       })
-      Alert.alert('성공', '변경 사항이 저장되었습니다.')
-      loadData() // 데이터 새로고침
+
+      const selectedTagIds = Array.from(
+        new Set(
+          movieTags
+            .map((tag) => Number(tag.id))
+            .filter((tagId) => Number.isFinite(tagId))
+        )
+      )
+      const normalizedOriginalTagIds = Array.from(
+        new Set(
+          originalTagIds
+            .map((tagId) => Number(tagId))
+            .filter((tagId) => Number.isFinite(tagId))
+        )
+      )
+      const tagsToAdd = selectedTagIds.filter((tagId) => !normalizedOriginalTagIds.includes(tagId))
+      const tagsToRemove = normalizedOriginalTagIds.filter((tagId) => !selectedTagIds.includes(tagId))
+
+      for (const tagId of tagsToAdd) {
+        await addTagToMovie(id, tagId)
+      }
+
+      for (const tagId of tagsToRemove) {
+        await removeTagFromMovie(id, tagId)
+      }
+
+      setOriginalTagIds(selectedTagIds)
+      Alert.alert("성공", "변경 사항이 저장되었습니다.")
+      await loadData()
     } catch (error) {
-      console.error('❌ 영화 정보 저장 실패:', error)
-      Alert.alert('오류', '저장에 실패했습니다.')
+      console.error("영화 정보 저장 실패:", error)
+      Alert.alert("오류", "저장에 실패했습니다.")
+    } finally {
+      setIsSaving(false)
     }
+  }, [id, isSaving, loadData, movieTags, originalTagIds, rating, review, status])
+
+  const handleMarkCompleted = () => {
+    setStatus("completed")
   }
 
-  // 시청 완료 처리
-  const handleMarkCompleted = async () => {
+  const executeDelete = useCallback(async () => {
+    if (isDeleting) return
+
     try {
-      await updateMovie(id, {
-        status: 'completed',
-        rating: rating || undefined,
-        one_line_review: review || undefined,
-      })
-      setStatus('completed')
-      Alert.alert('완료', '시청 완료 처리되었습니다.')
+      setIsDeleting(true)
+      await deleteMovie(id)
+      Alert.alert("삭제 완료", "영화가 삭제되었습니다.")
+      navigation.goBack()
     } catch (error) {
-      console.error('❌ 시청 완료 처리 실패:', error)
-      Alert.alert('오류', '처리에 실패했습니다.')
+      console.error("영화 삭제 실패:", error)
+      Alert.alert("오류", "삭제에 실패했습니다.")
+    } finally {
+      setIsDeleting(false)
     }
-  }
+  }, [id, isDeleting, navigation])
 
-  // 영화 삭제
-  const handleDelete = () => {
-    Alert.alert(
-      '영화 삭제',
-      '정말 이 영화를 삭제하시겠습니까?',
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '삭제',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteMovie(id)
-              Alert.alert('삭제 완료', '영화가 삭제되었습니다.')
-              navigation.goBack()
-            } catch (error) {
-              console.error('❌ 영화 삭제 실패:', error)
-              Alert.alert('오류', '삭제에 실패했습니다.')
-            }
-          },
+  const handleDelete = useCallback(() => {
+    if (isDeleting) return
+
+    // React Native Web에서는 Alert 버튼 콜백 동작이 제한될 수 있어 confirm 사용
+    if (Platform.OS === "web") {
+      const confirmed =
+        typeof globalThis.confirm === "function"
+          ? globalThis.confirm("정말 이 영화를 삭제하시겠습니까?")
+          : false
+
+      if (!confirmed) return
+      void executeDelete()
+      return
+    }
+
+    Alert.alert("영화 삭제", "정말 이 영화를 삭제하시겠습니까?", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "삭제",
+        style: "destructive",
+        onPress: () => {
+          void executeDelete()
         },
-      ]
-    )
-  }
+      },
+    ])
+  }, [executeDelete, isDeleting])
 
-  // 태그 추가
-  const handleAddTag = async (tagId: number) => {
-    try {
-      await addTagToMovie(id, tagId)
-      await loadData() // 데이터 새로고침
-      setShowTagPicker(false)
-    } catch (error) {
-      console.error('❌ 태그 추가 실패:', error)
-      Alert.alert('오류', '태그 추가에 실패했습니다.')
+  const handleAddTag = (tagId: number) => {
+    const targetTag = allTags.find((tag) => tag.id === tagId)
+    if (!targetTag) return
+
+    if (!movieTags.some((tag) => tag.id === tagId)) {
+      setMovieTags((prev) => [...prev, targetTag])
     }
+    setShowTagPicker(false)
   }
 
-  // 태그 제거
-  const handleRemoveTag = async (tagId: number) => {
-    try {
-      await removeTagFromMovie(id, tagId)
-      await loadData() // 데이터 새로고침
-    } catch (error) {
-      console.error('❌ 태그 제거 실패:', error)
-      Alert.alert('오류', '태그 제거에 실패했습니다.')
-    }
+  const handleRemoveTag = (tagId: number) => {
+    setMovieTags((prev) => prev.filter((tag) => tag.id !== tagId))
   }
 
-  // 별점 변경 시 자동 저장
-  const handleRatingChange = async (newRating: number) => {
+  const handleRatingChange = (newRating: number) => {
     setRating(newRating)
-    try {
-      await updateMovie(id, { rating: newRating })
-    } catch (error) {
-      console.error('❌ 별점 저장 실패:', error)
-    }
   }
 
-  // 로딩 중
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          style={[styles.headerSaveButton, isSaving && styles.headerSaveButtonDisabled]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color={COLORS.gold} />
+          ) : (
+            <Text style={styles.headerSaveText}>수정완료</Text>
+          )}
+        </TouchableOpacity>
+      ),
+    })
+  }, [handleSave, isSaving, navigation])
+
   if (loading || !movie) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
         <Text style={{ color: COLORS.lightGray, marginTop: 12 }}>영화 정보를 불러오는 중...</Text>
       </View>
@@ -151,13 +197,11 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Backdrop Image */}
       <View style={styles.backdropContainer}>
         <Image source={{ uri: movie.backdrop_url || movie.poster_url }} style={styles.backdrop} />
         <View style={styles.backdropOverlay} />
       </View>
 
-      {/* Movie Info */}
       <View style={styles.content}>
         <View style={styles.movieHeader}>
           <Image source={{ uri: movie.poster_url }} style={styles.poster} />
@@ -193,32 +237,26 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           </View>
         </View>
 
-        {/* Action Buttons */}
         <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={handleMarkCompleted}
-          >
+          <TouchableOpacity style={styles.primaryButton} onPress={handleMarkCompleted}>
             <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
             <Text style={styles.primaryButtonText}>
-              {status === 'completed' ? '시청 완료됨' : '시청 완료'}
+              {status === "completed" ? "시청 완료됨" : "시청 완료"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleSave}
-          >
-            <Ionicons name="save-outline" size={20} color={COLORS.gold} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.secondaryButton}
+            style={[styles.secondaryButton, isDeleting && styles.secondaryButtonDisabled]}
             onPress={handleDelete}
+            disabled={isDeleting}
           >
-            <Ionicons name="trash-outline" size={20} color={COLORS.red} />
+            {isDeleting ? (
+              <ActivityIndicator size="small" color={COLORS.red} />
+            ) : (
+              <Ionicons name="trash-outline" size={20} color={COLORS.red} />
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* Synopsis */}
         {movie.synopsis && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>줄거리</Text>
@@ -226,7 +264,6 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           </View>
         )}
 
-        {/* Rating */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>별점</Text>
           <View style={styles.ratingContainer}>
@@ -243,22 +280,19 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           </View>
         </View>
 
-        {/* Review */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>감상평</Text>
           <TextInput
             style={styles.reviewInput}
-            placeholder="이 영화에 대한 생각을 남겨보세요..."
+            placeholder="이 영화에 대한 감상을 적어보세요..."
             placeholderTextColor={COLORS.lightGray}
             multiline
             numberOfLines={4}
             value={review}
             onChangeText={setReview}
-            onBlur={handleSave}
           />
         </View>
 
-        {/* Tags */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>태그</Text>
           <View style={styles.tagsContainer}>
@@ -283,7 +317,6 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
             </TouchableOpacity>
           </View>
 
-          {/* Tag Picker */}
           {showTagPicker && (
             <View style={styles.tagPicker}>
               <Text style={styles.tagPickerTitle}>태그 선택</Text>
@@ -304,31 +337,30 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           )}
         </View>
 
-        {/* Status */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>상태</Text>
           <View style={styles.statusContainer}>
             <TouchableOpacity
-              style={[styles.statusButton, status === 'watchlist' && styles.statusButtonActive]}
-              onPress={() => setStatus('watchlist')}
+              style={[styles.statusButton, status === "watchlist" && styles.statusButtonActive]}
+              onPress={() => setStatus("watchlist")}
             >
-              <Text style={[styles.statusText, status === 'watchlist' && styles.statusTextActive]}>
-                보고 싶은
+              <Text style={[styles.statusText, status === "watchlist" && styles.statusTextActive]}>
+                보고 싶어
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.statusButton, status === 'watching' && styles.statusButtonActive]}
-              onPress={() => setStatus('watching')}
+              style={[styles.statusButton, status === "watching" && styles.statusButtonActive]}
+              onPress={() => setStatus("watching")}
             >
-              <Text style={[styles.statusText, status === 'watching' && styles.statusTextActive]}>
+              <Text style={[styles.statusText, status === "watching" && styles.statusTextActive]}>
                 보는 중
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.statusButton, status === 'completed' && styles.statusButtonActive]}
-              onPress={() => setStatus('completed')}
+              style={[styles.statusButton, status === "completed" && styles.statusButtonActive]}
+              onPress={() => setStatus("completed")}
             >
-              <Text style={[styles.statusText, status === 'completed' && styles.statusTextActive]}>
+              <Text style={[styles.statusText, status === "completed" && styles.statusTextActive]}>
                 완료
               </Text>
             </TouchableOpacity>
@@ -420,12 +452,15 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   secondaryButton: {
-    width: 50,
-    height: 50,
+    width: 56,
+    height: 56,
     backgroundColor: COLORS.deepGray,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.7,
   },
   section: {
     marginBottom: 24,
@@ -487,19 +522,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
-  dateButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  dateButtonText: {
-    color: COLORS.white,
-    fontSize: 15,
-    fontWeight: "500",
-  },
   bottomPadding: {
     height: 40,
   },
@@ -553,5 +575,24 @@ const styles = StyleSheet.create({
   statusTextActive: {
     color: COLORS.darkNavy,
     fontWeight: "600",
+  },
+  headerSaveButton: {
+    minWidth: 76,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    backgroundColor: COLORS.deepGray,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerSaveButtonDisabled: {
+    opacity: 0.8,
+  },
+  headerSaveText: {
+    color: COLORS.gold,
+    fontSize: 13,
+    fontWeight: "700",
   },
 })

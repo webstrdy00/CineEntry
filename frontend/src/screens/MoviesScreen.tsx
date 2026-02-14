@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, FlatList, ActivityIndicator } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
@@ -49,11 +49,11 @@ export default function MoviesScreen() {
     }
   }
 
-  const filters = [
+  const filters: Array<{ id: "all" | MovieStatus; label: string }> = [
     { id: "all", label: "전체" },
+    { id: "watchlist", label: "보고 싶은" },
     { id: "watching", label: "보는 중" },
     { id: "completed", label: "완료" },
-    { id: "watchlist", label: "보고 싶은" },
   ]
 
   // Filter and search logic
@@ -110,7 +110,7 @@ export default function MoviesScreen() {
       </View>
 
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersContainer}>
+      <View style={styles.filtersContainer}>
         {filters.map((filter) => (
           <FilterChip
             key={filter.id}
@@ -119,7 +119,7 @@ export default function MoviesScreen() {
             onPress={() => setSelectedFilter(filter.id)}
           />
         ))}
-      </ScrollView>
+      </View>
 
       {/* Movies Grid */}
       {loading ? (
@@ -185,6 +185,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   filtersContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 8,

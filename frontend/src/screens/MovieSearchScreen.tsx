@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { View, Text, StyleSheet, TextInput, FlatList, TouchableOpacity, Image, ActivityIndicator, Alert } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
@@ -15,20 +15,7 @@ export default function MovieSearchScreen() {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [addingMovieId, setAddingMovieId] = useState<number | null>(null)
-
-  // Debounced search
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([])
-      return
-    }
-
-    const timer = setTimeout(() => {
-      performSearch(searchQuery)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [searchQuery])
+  const [hasSearched, setHasSearched] = useState(false)
 
   const performSearch = async (query: string) => {
     try {
@@ -41,6 +28,17 @@ export default function MovieSearchScreen() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSearch = async () => {
+    const query = searchQuery.trim()
+    if (!query) {
+      setHasSearched(false)
+      setSearchResults([])
+      return
+    }
+    setHasSearched(true)
+    await performSearch(query)
   }
 
   const handleAddMovie = async (movie: any) => {
@@ -96,7 +94,7 @@ export default function MovieSearchScreen() {
                 {item.year} · {item.genre}
               </Text>
             )}
-            {item.director && (
+            {item.director && item.director !== "Unknown" && (
               <Text style={styles.metadataText}>{item.director}</Text>
             )}
           </View>
@@ -135,24 +133,47 @@ export default function MovieSearchScreen() {
           placeholder="영화 제목, 감독 검색..."
           placeholderTextColor={COLORS.lightGray}
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={(text) => {
+            setSearchQuery(text)
+            if (!text.trim()) {
+              setHasSearched(false)
+              setSearchResults([])
+            }
+          }}
+          onSubmitEditing={handleSearch}
+          returnKeyType="search"
           autoFocus
         />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={20} color={COLORS.lightGray} />
+        <View style={styles.searchActions}>
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.searchActionButton}
+              onPress={() => {
+                setSearchQuery("")
+                setHasSearched(false)
+                setSearchResults([])
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color={COLORS.lightGray} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.searchActionButton}
+            onPress={handleSearch}
+            disabled={loading}
+          >
+            <Ionicons name="search" size={18} color={COLORS.gold} />
           </TouchableOpacity>
-        )}
+        </View>
       </View>
 
       {/* Search Results */}
-      {searchQuery.trim() === "" ? (
+      {!hasSearched ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="search" size={64} color={COLORS.lightGray} />
           <Text style={styles.emptyTitle}>영화를 검색해보세요</Text>
           <Text style={styles.emptySubtitle}>
-            제목, 원제목, 감독으로 검색할 수 있습니다{'\n'}
-            KOBIS, TMDb, KMDb에서 검색합니다
+            제목, 원제목, 감독으로 검색할 수 있습니다
           </Text>
         </View>
       ) : loading ? (
@@ -215,6 +236,17 @@ const styles = StyleSheet.create({
     flex: 1,
     color: COLORS.white,
     fontSize: 15,
+  },
+  searchActionButton: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
   },
   emptyContainer: {
     flex: 1,

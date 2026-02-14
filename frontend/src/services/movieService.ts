@@ -7,10 +7,10 @@ import api, { unwrapResponse } from '../lib/api';
 export interface UserMovieCreate {
   movie_id: number;
   status: 'watching' | 'completed' | 'watchlist';
-  rating?: number; // 1-5
+  rating?: number;
   one_line_review?: string;
-  watch_date?: string; // ISO 8601 format
-  progress?: number; // 시청 시간(분)
+  watch_date?: string;
+  progress?: number;
   is_best_movie?: boolean;
 }
 
@@ -19,69 +19,53 @@ export interface UserMovieUpdate {
   rating?: number;
   one_line_review?: string;
   watch_date?: string;
-  progress?: number; // 시청 시간(분)
+  progress?: number;
   is_best_movie?: boolean;
 }
 
 export interface MovieSearchParams {
-  q: string; // 검색어
+  q: string;
 }
+
+const normalizeMovie = (movie: any) => ({
+  ...movie,
+  poster: movie?.poster ?? movie?.poster_url ?? null,
+  backdrop: movie?.backdrop ?? movie?.backdrop_url ?? null,
+  poster_url: movie?.poster_url ?? movie?.poster ?? null,
+  backdrop_url: movie?.backdrop_url ?? movie?.backdrop ?? null,
+  review: movie?.review ?? movie?.one_line_review ?? '',
+});
 
 // ===========================
 // API Functions
 // ===========================
 
-/**
- * 사용자 영화 목록 조회
- * @param status - 필터링할 상태 (watching, completed, watchlist)
- */
 export const getMovies = async (status?: string) => {
   const params = status ? { status } : {};
   const response = await api.get('/api/v1/movies/', { params });
-  return unwrapResponse<any[]>(response);
+  return unwrapResponse<any[]>(response).map(normalizeMovie);
 };
 
-/**
- * 영화 상세 조회
- * @param movieId - 영화 ID
- */
 export const getMovieDetail = async (movieId: number) => {
   const response = await api.get(`/api/v1/movies/${movieId}`);
-  return unwrapResponse<any>(response);
+  return normalizeMovie(unwrapResponse<any>(response));
 };
 
-/**
- * 영화 추가
- * @param data - 영화 생성 데이터
- */
 export const addMovie = async (data: UserMovieCreate) => {
   const response = await api.post('/api/v1/movies/', data);
-  return unwrapResponse<any>(response);
+  return normalizeMovie(unwrapResponse<any>(response));
 };
 
-/**
- * 영화 수정
- * @param movieId - 영화 ID
- * @param data - 영화 수정 데이터
- */
 export const updateMovie = async (movieId: number, data: UserMovieUpdate) => {
   const response = await api.put(`/api/v1/movies/${movieId}`, data);
-  return unwrapResponse<any>(response);
+  return normalizeMovie(unwrapResponse<any>(response));
 };
 
-/**
- * 영화 삭제
- * @param movieId - 영화 ID
- */
 export const deleteMovie = async (movieId: number) => {
   const response = await api.delete(`/api/v1/movies/${movieId}`);
   return unwrapResponse<any>(response);
 };
 
-/**
- * 영화 검색 (외부 API)
- * @param query - 검색어
- */
 export const searchMovies = async (query: string) => {
   const response = await api.get('/api/v1/movies/search', {
     params: { q: query },
@@ -89,19 +73,11 @@ export const searchMovies = async (query: string) => {
   return unwrapResponse<any[]>(response);
 };
 
-/**
- * 영화 메타데이터 조회 (외부 API)
- * @param movieId - KOBIS/TMDb 영화 ID
- */
-export const getMovieMetadata = async (movieId: string) => {
-  const response = await api.get(`/api/v1/movies/${movieId}/metadata`);
+export const getMovieMetadata = async (source: 'kobis' | 'tmdb', movieId: string | number) => {
+  const response = await api.get(`/api/v1/movies/metadata/${source}/${movieId}`);
   return unwrapResponse<any>(response);
 };
 
-/**
- * 메타데이터로부터 영화 생성 (DB에 Movie 저장)
- * @param metadata - 외부 API 검색 결과 (MovieSearchResult 또는 MovieMetadata)
- */
 export const createMovieFromMetadata = async (metadata: any) => {
   const response = await api.post('/api/v1/movies/from-metadata', metadata);
   return unwrapResponse<any>(response);
