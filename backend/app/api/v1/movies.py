@@ -17,6 +17,20 @@ from app.services.external_api_service import external_api_service
 router = APIRouter(prefix="/movies", tags=["movies"])
 
 
+def normalize_status_input(status: Optional[str]) -> Optional[str]:
+    """레거시 상태값(wishlist)을 watchlist로 정규화."""
+    if status in ("wishlist", "watchlist"):
+        return "watchlist"
+    return status
+
+
+def normalize_status_output(status: Optional[str]) -> Optional[str]:
+    """응답 상태값은 watchlist로 통일."""
+    if status in ("wishlist", "watchlist"):
+        return "watchlist"
+    return status
+
+
 @router.get("/", response_model=BaseResponse[List[FlatMovieResponse]])
 async def get_user_movies(
     status: Optional[str] = Query(None, description="Filter by status: watchlist, watching, completed"),
@@ -32,7 +46,11 @@ async def get_user_movies(
     query = db.query(UserMovie).options(joinedload(UserMovie.movie)).filter(UserMovie.user_id == user_id)
 
     if status:
-        query = query.filter(UserMovie.status == status)
+        normalized_status = normalize_status_input(status)
+        if normalized_status == "watchlist":
+            query = query.filter(UserMovie.status.in_(["watchlist", "wishlist"]))
+        else:
+            query = query.filter(UserMovie.status == normalized_status)
 
     user_movies = query.order_by(UserMovie.created_at.desc()).all()
 
@@ -43,7 +61,7 @@ async def get_user_movies(
             # UserMovie 필드
             id=um.id,
             user_id=um.user_id,
-            status=um.status,
+            status=normalize_status_output(um.status),
             rating=um.rating,
             review=um.one_line_review,
             watch_date=um.watch_date,
@@ -74,6 +92,28 @@ async def get_user_movies(
     )
 
 
+@router.get("/search", response_model=BaseResponse[List[MovieSearchResult]])
+async def search_movies(
+    q: str = Query(..., description="Search query"),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Search movies from external APIs (KOBIS, TMDb, KMDb)
+
+    Query Parameters:
+    - q: Search query (movie title)
+
+    Returns:
+    - List of movie search results from multiple sources (KOBIS, TMDb, KMDb)
+    """
+    results = await external_api_service.search_movies(q)
+    return BaseResponse(
+        success=True,
+        message="Search completed successfully",
+        data=results
+    )
+
+
 @router.get("/{user_movie_id}", response_model=BaseResponse[FlatMovieResponse])
 async def get_movie_detail(
     user_movie_id: int,
@@ -101,7 +141,7 @@ async def get_movie_detail(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
-        status=user_movie.status,
+        status=normalize_status_output(user_movie.status),
         rating=user_movie.rating,
         review=user_movie.one_line_review,
         watch_date=user_movie.watch_date,
@@ -170,10 +210,13 @@ async def add_movie(
             detail="Movie already exists in your library",
         )
 
+    payload = user_movie_data.model_dump()
+    payload["status"] = normalize_status_input(payload.get("status"))
+
     # Create user movie
     user_movie = UserMovie(
         user_id=user_id,
-        **user_movie_data.model_dump()
+        **payload
     )
 
     db.add(user_movie)
@@ -188,7 +231,7 @@ async def add_movie(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
-        status=user_movie.status,
+        status=normalize_status_output(user_movie.status),
         rating=user_movie.rating,
         review=user_movie.one_line_review,
         watch_date=user_movie.watch_date,
@@ -251,6 +294,9 @@ async def update_movie(
 
     # Update only provided fields
     update_dict = update_data.model_dump(exclude_unset=True)
+    if "status" in update_dict:
+        update_dict["status"] = normalize_status_input(update_dict["status"])
+
     for field, value in update_dict.items():
         setattr(user_movie, field, value)
 
@@ -265,7 +311,7 @@ async def update_movie(
         # UserMovie 필드
         id=user_movie.id,
         user_id=user_movie.user_id,
-        status=user_movie.status,
+        status=normalize_status_output(user_movie.status),
         rating=user_movie.rating,
         review=user_movie.one_line_review,
         watch_date=user_movie.watch_date,
@@ -324,28 +370,6 @@ async def delete_movie(
         success=True,
         message="Movie deleted successfully",
         data={"user_movie_id": user_movie_id}
-    )
-
-
-@router.get("/search", response_model=BaseResponse[List[MovieSearchResult]])
-async def search_movies(
-    q: str = Query(..., description="Search query"),
-    user_id: str = Depends(get_current_user),
-):
-    """
-    Search movies from external APIs (KOBIS, TMDb, KMDb)
-
-    Query Parameters:
-    - q: Search query (movie title)
-
-    Returns:
-    - List of movie search results from multiple sources (KOBIS, TMDb, KMDb)
-    """
-    results = await external_api_service.search_movies(q)
-    return BaseResponse(
-        success=True,
-        message="Search completed successfully",
-        data=results
     )
 
 
@@ -421,7 +445,7 @@ async def create_movie_from_metadata(
     movie = Movie(
         title_ko=metadata.title,
         title_original=metadata.original_title,
-        production_year=metadata.year,
+        production_year=metadata.year if metadata.year else None,
         director=metadata.director,
         runtime=metadata.runtime,
         genre=metadata.genre,

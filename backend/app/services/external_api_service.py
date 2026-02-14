@@ -134,19 +134,31 @@ class ExternalAPIService:
         Returns:
             영화 검색 결과 리스트
         """
-        results = []
+        results: List[MovieSearchResult] = []
 
         # KOBIS에서 검색 (한국 영화)
-        kobis_results = await self.search_kobis(query)
-        results.extend(kobis_results)
+        try:
+            kobis_results = await self.search_kobis(query)
+            results.extend(kobis_results)
+        except Exception as e:
+            print(f"[search] KOBIS 검색 실패: {e}")
 
         # TMDb에서 검색 (국제 영화)
-        tmdb_results = await self.search_tmdb(query)
-        results.extend(tmdb_results)
+        try:
+            tmdb_results = await self.search_tmdb(query)
+            results.extend(tmdb_results)
+        except Exception as e:
+            print(f"[search] TMDb 검색 실패: {e}")
 
-        # KMDb에서 검색 (한국 영화 추가 정보)
-        kmdb_results = await self.search_kmdb(query)
-        results.extend(kmdb_results)
+        # KMDb에서 검색 (한국 영화 추가 정보) - 키가 있을 때만
+        if settings.KMDB_API_KEY and settings.KMDB_API_KEY != "your_kmdb_api_key_here":
+            try:
+                kmdb_results = await self.search_kmdb(query)
+                results.extend(kmdb_results)
+            except Exception as e:
+                print(f"[search] KMDb 검색 실패: {e}")
+        else:
+            print("[search] KMDb API 키가 없어 KMDb 검색을 건너뜁니다.")
 
         return results
 

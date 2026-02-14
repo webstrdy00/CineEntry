@@ -135,7 +135,7 @@ function MainStack() {
 
 // Root Navigator
 function RootNavigator() {
-  const { session, loading } = useAuth()
+  const { isAuthenticated, loading } = useAuth()
 
   if (loading) {
     return (
@@ -148,7 +148,7 @@ function RootNavigator() {
   return (
     <NavigationContainer>
       <StatusBar style="light" />
-      {session ? <MainStack /> : <AuthStack />}
+      {isAuthenticated ? <MainStack /> : <AuthStack />}
     </NavigationContainer>
   )
 }

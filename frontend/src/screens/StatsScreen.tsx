@@ -10,6 +10,15 @@ const GENRE_COLORS = [COLORS.gold, COLORS.red, "#3498db", "#2ecc71", "#9b59b6", 
 
 export default function StatsScreen() {
   const [loading, setLoading] = useState(true)
+  const defaultStats = {
+    yearly_goal: 100,
+    yearly_progress: 0,
+    yearly_goal_percentage: 0,
+    total_watched: 0,
+    average_rating: 0,
+    total_watch_time: 0,
+    current_streak: 0,
+  }
   const [stats, setStats] = useState<any>(null)
   const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [genreStats, setGenreStats] = useState<any[]>([])
@@ -23,13 +32,16 @@ export default function StatsScreen() {
     try {
       setLoading(true)
       const [statsData, monthlyDataRes, genreDataRes, tagsDataRes] = await Promise.all([
-        getOverallStats(),
+        getOverallStats().catch((err) => {
+          console.error('❌ getOverallStats 실패:', err.message)
+          return null
+        }),
         getMonthlyStats(6).catch(() => []),
         getGenreStats(5).catch(() => []),
         getTagStats(10).catch(() => []),
       ])
 
-      setStats(statsData)
+      setStats(statsData || defaultStats)
 
       // 월별 데이터 포맷팅 (YYYY-MM → M월)
       const formattedMonthly = monthlyDataRes.map((item: any) => ({
@@ -53,7 +65,7 @@ export default function StatsScreen() {
     }
   }
 
-  if (loading || !stats) {
+  if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
@@ -62,9 +74,12 @@ export default function StatsScreen() {
     )
   }
 
-  const yearlyGoal = stats.yearly_goal
-  const watched = stats.yearly_progress
-  const progress = stats.yearly_goal_percentage
+  // stats가 null이면 기본값 사용
+  const displayStats = stats || defaultStats
+
+  const yearlyGoal = displayStats.yearly_goal
+  const watched = displayStats.yearly_progress
+  const progress = displayStats.yearly_goal_percentage
   const maxCount = monthlyData.length > 0 ? Math.max(...monthlyData.map((d) => d.count)) : 1
 
   return (
@@ -107,10 +122,10 @@ export default function StatsScreen() {
 
       {/* Stats Grid */}
       <View style={styles.statsGrid}>
-        <StatCard title="총 관람" value={`${stats.total_watched || 0}편`} icon="film" color={COLORS.gold} />
-        <StatCard title="평균 별점" value={(stats.average_rating || 0).toFixed(1)} icon="star" color={COLORS.gold} />
-        <StatCard title="총 시청 시간" value={`${Math.floor((stats.total_watch_time || 0) / 60)}시간`} icon="time" color={COLORS.gold} />
-        <StatCard title="연속 기록" value={`${stats.current_streak || 0}일`} icon="calendar" color={COLORS.gold} />
+        <StatCard title="총 관람" value={`${displayStats.total_watched || 0}편`} icon="film" color={COLORS.gold} />
+        <StatCard title="평균 별점" value={(displayStats.average_rating || 0).toFixed(1)} icon="star" color={COLORS.gold} />
+        <StatCard title="총 시청 시간" value={`${Math.floor((displayStats.total_watch_time || 0) / 60)}시간`} icon="time" color={COLORS.gold} />
+        <StatCard title="연속 기록" value={`${displayStats.current_streak || 0}일`} icon="calendar" color={COLORS.gold} />
       </View>
 
       {/* Genre Stats */}

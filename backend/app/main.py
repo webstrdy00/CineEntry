@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Filmory API",
-    description="Movie tracking app API - Hybrid architecture with Supabase Auth + Independent PostgreSQL",
+    description="Movie tracking app API with self-hosted JWT authentication",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -43,7 +43,7 @@ async def root():
     return {
         "message": "Filmory API is running",
         "version": "1.0.0",
-        "architecture": "Supabase Auth + Independent PostgreSQL",
+        "architecture": "Self-hosted JWT + PostgreSQL",
     }
 
 
@@ -54,8 +54,9 @@ async def health_check():
 
 
 # API 라우터 등록
-from app.api.v1 import movies, collections, stats, users, tags, media
+from app.api.v1 import movies, collections, stats, users, tags, media, auth
 
+app.include_router(auth.router, prefix="/api/v1")  # 인증 API
 app.include_router(movies.router, prefix="/api/v1")
 app.include_router(collections.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")

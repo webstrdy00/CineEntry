@@ -18,6 +18,12 @@ from app.services.auto_collection_service import auto_collection_service
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
+def normalize_status_output(status: str | None) -> str | None:
+    if status in ("wishlist", "watchlist"):
+        return "watchlist"
+    return status
+
+
 @router.get("/", response_model=BaseResponse[List[CollectionResponse]])
 async def get_user_collections(
     db: Session = Depends(get_db),
@@ -101,7 +107,7 @@ async def get_collection_detail(
             poster_url=movie.poster_url,
             rating=user_movie.rating,
             year=movie.year,
-            status=user_movie.status,
+            status=normalize_status_output(user_movie.status),
         ))
 
     collection_data = CollectionWithMovies(

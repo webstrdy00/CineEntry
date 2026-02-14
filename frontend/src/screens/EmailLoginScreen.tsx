@@ -11,34 +11,15 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { COLORS } from '../constants/colors';
+import { login } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
 
 const EmailLoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
-
-  const resendConfirmationEmail = async (targetEmail: string) => {
-    try {
-      setResending(true);
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: targetEmail.trim(),
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      Alert.alert('전송 완료', '인증 이메일을 다시 보냈습니다.');
-    } catch (error: any) {
-      Alert.alert('오류', error.message);
-    } finally {
-      setResending(false);
-    }
-  };
+  const { setUser } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -49,38 +30,21 @@ const EmailLoginScreen = ({ navigation }: any) => {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
-      });
+      const result = await login({ email: email.trim(), password });
 
-      if (error) {
-        // 이메일 미인증 처리
-        if (error.message?.toLowerCase().includes('email not confirmed')) {
-          Alert.alert(
-            '이메일 인증 필요',
-            '이메일 인증이 완료되지 않았습니다. 이메일을 확인해주세요.',
-            [
-              { text: '취소', style: 'cancel' },
-              {
-                text: resending ? '재전송 중...' : '인증 메일 재전송',
-                onPress: () => resendConfirmationEmail(email),
-              },
-            ]
-          );
-          return;
-        }
+      console.log('✅ 로그인 성공:', result.user.email);
 
-        throw error;
-      }
-
-      if (data.session) {
-        console.log('✅ 로그인 성공:', data.user.email);
-        console.log('🔑 Access Token:', data.session.access_token.substring(0, 20) + '...');
-      }
+      // AuthContext 업데이트
+      setUser(result.user);
     } catch (error: any) {
-      console.error('❌ 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message);
+      console.error('❌ 로그인 실패:', error);
+
+      const message =
+        error.response?.data?.detail ||
+        error.message ||
+        '로그인에 실패했습니다.';
+
+      Alert.alert('로그인 실패', message);
     } finally {
       setLoading(false);
     }
@@ -115,22 +79,22 @@ const EmailLoginScreen = ({ navigation }: any) => {
             editable={!loading}
           />
 
-        <TextInput
-          style={styles.input}
-          placeholder="비밀번호"
-          placeholderTextColor="#999"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          editable={!loading}
-        />
+          <TextInput
+            style={styles.input}
+            placeholder="비밀번호"
+            placeholderTextColor="#999"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            editable={!loading}
+          />
 
-        <TouchableOpacity
-          style={styles.forgotPassword}
-          onPress={() => navigation.navigate('ForgotPassword')}
-        >
-          <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.forgotPassword}
+            onPress={() => navigation.navigate('ForgotPassword')}
+          >
+            <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}

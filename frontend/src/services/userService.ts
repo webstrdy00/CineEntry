@@ -5,7 +5,7 @@ import api, { unwrapResponse } from '../lib/api';
 // ===========================
 
 export interface User {
-  id: string; // UUID from Supabase Auth
+  id: string;
   email: string;
   display_name?: string;
   avatar_url?: string;

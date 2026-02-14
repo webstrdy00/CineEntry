@@ -11,10 +11,10 @@ class MovieBase(BaseModel):
     """Movie 기본 스키마"""
     title: str = Field(..., alias="title_ko")
     original_title: Optional[str] = Field(None, alias="title_original")
-    director: str
-    year: int = Field(..., alias="production_year")
-    runtime: int  # minutes
-    genre: str  # comma-separated
+    director: Optional[str] = None
+    year: Optional[int] = Field(None, alias="production_year")
+    runtime: Optional[int] = None  # minutes
+    genre: Optional[str] = None  # comma-separated
     poster_url: Optional[str] = None
     backdrop_url: Optional[str] = None
     synopsis: Optional[str] = None
@@ -47,7 +47,8 @@ class MovieResponse(MovieBase):
 class UserMovieBase(BaseModel):
     """UserMovie 기본 스키마"""
     movie_id: int
-    status: str = Field(..., pattern="^(wishlist|watching|completed)$")  # wishlist로 통일
+    # 레거시(wishlist) + 현재 프론트(watchlist) 모두 허용
+    status: str = Field(..., pattern="^(wishlist|watchlist|watching|completed)$")
     rating: Optional[float] = Field(None, ge=0, le=5)  # 0~5, 0.5 단위 허용
     one_line_review: Optional[str] = None  # 모델과 일치
     watch_date: Optional[date] = None
@@ -62,7 +63,7 @@ class UserMovieCreate(UserMovieBase):
 
 class UserMovieUpdate(BaseModel):
     """UserMovie 업데이트 스키마"""
-    status: Optional[str] = Field(None, pattern="^(wishlist|watching|completed)$")
+    status: Optional[str] = Field(None, pattern="^(wishlist|watchlist|watching|completed)$")
     rating: Optional[float] = Field(None, ge=0, le=5)
     one_line_review: Optional[str] = None
     watch_date: Optional[date] = None
@@ -100,10 +101,10 @@ class FlatMovieResponse(BaseModel):
     original_title: Optional[str] = None
     poster: Optional[str] = None  # poster_url → poster
     backdrop: Optional[str] = None  # backdrop_url → backdrop
-    year: int
-    runtime: int
-    genre: str
-    director: str
+    year: Optional[int] = None
+    runtime: Optional[int] = None
+    genre: Optional[str] = None
+    director: Optional[str] = None
     synopsis: Optional[str] = None
 
     # 메타데이터
@@ -131,10 +132,10 @@ class MovieMetadata(BaseModel):
     """영화 메타데이터 (외부 API에서 가져온 상세 정보)"""
     title: str
     original_title: Optional[str] = None
-    director: str
-    year: int
-    runtime: int
-    genre: str
+    director: Optional[str] = None
+    year: Optional[int] = None
+    runtime: Optional[int] = None
+    genre: Optional[str] = None
     poster_url: Optional[str] = None
     backdrop_url: Optional[str] = None
     synopsis: Optional[str] = None

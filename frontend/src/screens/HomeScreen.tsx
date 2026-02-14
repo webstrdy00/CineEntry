@@ -18,15 +18,17 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
 
-  // State
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<any>({
+  const defaultStats = {
     yearly_goal: 100,
     yearly_progress: 0,
     total_watched: 0,
     current_streak: 0,
     average_rating: 0,
-  })
+  }
+
+  // State
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<any>(defaultStats)
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
   const [bestMoviesList, setBestMoviesList] = useState<any[]>([])
@@ -64,7 +66,7 @@ export default function HomeScreen() {
 
       console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, bestMoviesData })
 
-      setStats(statsData)
+      setStats(statsData || defaultStats)
       setWatchingMovies(watchingData)
       setWatchlistMovies(watchlistData)
       setBestMoviesList(bestMoviesData)

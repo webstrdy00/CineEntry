@@ -124,7 +124,10 @@ class AutoCollectionService:
 
         # 1. status 필터
         if "status" in rules:
-            query = query.filter(UserMovie.status == rules["status"])
+            if rules["status"] in ("watchlist", "wishlist"):
+                query = query.filter(UserMovie.status.in_(["watchlist", "wishlist"]))
+            else:
+                query = query.filter(UserMovie.status == rules["status"])
 
         # 2. rating 필터 (min, max)
         if "rating" in rules:
@@ -210,7 +213,7 @@ class AutoCollectionService:
 
         # status 검증
         if "status" in rules:
-            allowed_status = ["wishlist", "watching", "completed"]
+            allowed_status = ["watchlist", "wishlist", "watching", "completed"]
             if rules["status"] not in allowed_status:
                 raise ValueError(f"Invalid status: {rules['status']}")
 

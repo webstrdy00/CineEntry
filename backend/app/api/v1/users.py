@@ -2,56 +2,20 @@
 User API endpoints
 사용자 정보 관련 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user, get_current_user_id
+from app.middleware.auth_middleware import get_current_user_id
 from app.models.user import User
-from app.schemas.user import UserResponse, UserUpdate, UserCreate
+from app.schemas.user import UserResponse, UserUpdate
 from app.schemas.common import BaseResponse
-from app.config import settings
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-def verify_webhook_secret(x_webhook_secret: Optional[str] = Header(None)):
-    """
-    Webhook Secret 검증
-
-    Supabase Webhook 또는 관리자 요청인지 확인
-    - X-Webhook-Secret 헤더가 환경변수의 SUPABASE_WEBHOOK_SECRET과 일치해야 함
-
-    Args:
-        x_webhook_secret: X-Webhook-Secret 헤더 값
-
-    Raises:
-        HTTPException: 401 if secret is invalid or missing
-    """
-    if not settings.SUPABASE_WEBHOOK_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Webhook secret is not configured"
-        )
-
-    if not x_webhook_secret:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing webhook secret"
-        )
-
-    if x_webhook_secret != settings.SUPABASE_WEBHOOK_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid webhook secret"
-        )
-
-    return True
-
-
 @router.get("/me", response_model=BaseResponse[UserResponse])
-async def get_current_user(
+async def get_current_user_info(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
@@ -112,59 +76,6 @@ async def update_current_user(
     )
 
 
-@router.post("/", response_model=BaseResponse[UserResponse], status_code=status.HTTP_201_CREATED)
-async def create_user(
-    user_create: UserCreate,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)  # JWT 인증으로 변경
-):
-    """
-    새 사용자 생성 (자동 생성 - 로그인 시 호출)
-
-    🔒 보안: JWT 토큰 검증 필요 (Authorization: Bearer <token>)
-
-    Supabase Auth로 로그인 후 자동으로 호출
-    - JWT 토큰에서 user_id를 추출하여 사용
-    - 이미 존재하는 사용자면 기존 정보 반환 (409 아님)
-
-    Example:
-    ```bash
-    curl -X POST http://localhost:8000/api/v1/users \\
-      -H "Authorization: Bearer <jwt_token>" \\
-      -H "Content-Type: application/json" \\
-      -d '{"email": "user@example.com"}'
-    ```
-    """
-    # JWT에서 추출한 user_id로 기존 사용자 확인
-    existing_user = db.query(User).filter(User.id == user_id).first()
-    if existing_user:
-        # 이미 존재하는 사용자 - 409 대신 200으로 기존 정보 반환
-        return BaseResponse(
-            success=True,
-            message="사용자가 이미 존재합니다.",
-            data=existing_user
-        )
-
-    # 새 사용자 생성 (JWT의 user_id 사용)
-    new_user = User(
-        id=user_id,  # JWT에서 가져온 Supabase user_id 사용
-        email=user_create.email,
-        display_name=user_create.display_name,
-        avatar_url=user_create.avatar_url,
-        yearly_goal=100  # 기본값
-    )
-
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-
-    return BaseResponse(
-        success=True,
-        message="사용자가 생성되었습니다.",
-        data=new_user
-    )
-
-
 @router.delete("/me", response_model=BaseResponse[dict])
 async def delete_current_user(
     user_id: str = Depends(get_current_user_id),
@@ -175,8 +86,6 @@ async def delete_current_user(
 
     - 사용자와 관련된 모든 데이터 삭제 (CASCADE)
     - user_movies, user_images, collections, custom_tags 모두 삭제됨
-
-    NOTE: Supabase Auth 사용자도 함께 삭제 필요 (Frontend에서 처리)
     """
     user = db.query(User).filter(User.id == user_id).first()
 

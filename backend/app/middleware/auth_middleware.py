@@ -1,105 +1,59 @@
+"""
+Authentication Middleware
+자체 JWT 토큰 검증
+"""
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jwt import PyJWKClient
-import jwt
-from app.config import settings
+
+from app.services.auth_service import verify_access_token
 
 security = HTTPBearer()
-
-# PyJWKClient for Supabase JWKS (handles kid-based key selection automatically)
-jwk_client = PyJWKClient(settings.SUPABASE_JWKS_URL, cache_keys=True)
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> str:
     """
-    Validate Supabase JWT token and return user_id
-
-    Supports both HS256 (secret key) and RS256 (JWKS public key) algorithms
+    Access Token을 검증하고 user_id를 반환
 
     Args:
         credentials: HTTP Bearer token from Authorization header
 
     Returns:
-        user_id (str): Supabase user ID (UUID)
+        user_id (str): 사용자 UUID
 
     Raises:
         HTTPException: 401 if token is invalid or expired
     """
     token = credentials.credentials
 
-    try:
-        # 1. Try RS256 (JWKS) first - for production tokens
-        try:
-            signing_key = jwk_client.get_signing_key_from_jwt(token)
-            payload = jwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["RS256"],
-                audience=settings.JWT_AUDIENCE,
-            )
-            user_id = payload.get("sub")
-            if user_id:
-                return user_id
-        except Exception as rs256_error:
-            # If RS256 fails, try HS256 with secret key
-            if settings.SUPABASE_JWT_SECRET:
-                try:
-                    payload = jwt.decode(
-                        token,
-                        settings.SUPABASE_JWT_SECRET,
-                        algorithms=["HS256"],
-                        audience=settings.JWT_AUDIENCE,
-                    )
-                    user_id = payload.get("sub")
-                    if user_id:
-                        return user_id
-                except Exception:
-                    pass
+    user_id = verify_access_token(token)
 
-            # If both fail, raise the RS256 error
-            raise rs256_error
-
-        # If we get here, token is valid but missing user_id
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token: missing user_id",
+            detail="유효하지 않거나 만료된 토큰입니다.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(e)}",
-        )
+    return user_id
+
+
+# Alias for consistency
+get_current_user_id = get_current_user
 
 
 # Optional security for routes that allow optional authentication
 security_optional = HTTPBearer(auto_error=False)
 
 
-# Alias for consistency (get_current_user_id is the same as get_current_user)
-get_current_user_id = get_current_user
-
-
-# Optional: Dependency for routes that allow optional authentication
 async def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials = Security(security_optional),
 ) -> str | None:
     """
-    Get current user if token is provided, otherwise return None
+    토큰이 제공되면 user_id를 반환, 없으면 None
 
-    Useful for routes that work with or without authentication
+    인증 선택적인 라우트에 사용
     """
     if not credentials:
         return None

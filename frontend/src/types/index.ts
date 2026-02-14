@@ -8,7 +8,7 @@
 // Movie Related Types
 // ============================================
 
-export type MovieStatus = "wishlist" | "watching" | "completed"
+export type MovieStatus = "watchlist" | "watching" | "completed"
 
 export interface Movie {
   id: number

@@ -12,8 +12,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { COLORS } from '../constants/colors';
+import { register } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
 
 const SignUpScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
@@ -21,6 +22,7 @@ const SignUpScreen = ({ navigation }: any) => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+  const { setUser } = useAuth();
 
   const handleSignUp = async () => {
     // Validation
@@ -42,39 +44,27 @@ const SignUpScreen = ({ navigation }: any) => {
     setLoading(true);
 
     try {
-      // 1. Supabase Auth에 사용자 등록
-      // display_name을 user_metadata에 저장하여 로그인 시 AuthContext에서 사용
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const result = await register({
         email: email.trim(),
-        password: password,
-        options: {
-          data: {
-            display_name: displayName.trim(),
-            full_name: displayName.trim(),
-          },
-        },
+        password,
+        display_name: displayName.trim(),
       });
 
-      if (authError) {
-        throw authError;
-      }
+      console.log('✅ 회원가입 성공:', result.user.email);
 
-      if (!authData.user) {
-        throw new Error('사용자 생성 실패');
-      }
+      // AuthContext 업데이트 (자동 로그인)
+      setUser(result.user);
 
-      console.log('✅ Supabase 사용자 생성 완료:', authData.user.id);
-      // NOTE: Backend DB 사용자 생성은 로그인 시 AuthContext에서 자동으로 처리됨
-
-      Alert.alert('회원가입 성공!', '인증 이메일을 발송했습니다. 이메일을 확인하고 인증을 완료해주세요.', [
-        {
-          text: '확인',
-          onPress: () => navigation.navigate('Login'),
-        },
-      ]);
+      Alert.alert('회원가입 완료!', 'Filmory에 오신 것을 환영합니다.');
     } catch (error: any) {
-      console.error('❌ 회원가입 실패:', error.message);
-      Alert.alert('회원가입 실패', error.message);
+      console.error('❌ 회원가입 실패:', error);
+
+      const message =
+        error.response?.data?.detail ||
+        error.message ||
+        '회원가입에 실패했습니다.';
+
+      Alert.alert('회원가입 실패', message);
     } finally {
       setLoading(false);
     }

@@ -5,11 +5,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
 import { COLORS } from '../constants/colors';
+import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { getGoogleAuthUrl, getKakaoAuthUrl } from '../services/authService';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(false);
@@ -19,46 +23,26 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       setLoading(true);
 
-      // 웹 환경과 모바일 환경에 따라 redirectTo 설정
-      const redirectTo = typeof window !== 'undefined'
-        ? window.location.origin // 웹: http://localhost:8081
-        : 'filmory://auth/callback'; // 모바일: Deep Link
+      const { url } = await getGoogleAuthUrl();
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-        },
-      });
+      console.log('🔗 Google 로그인 시작:', url);
 
-      if (error) throw error;
+      if (Platform.OS === 'web') {
+        window.location.href = url;
+      } else {
+        const result = await WebBrowser.openAuthSessionAsync(
+          url,
+          'filmory://auth/google/callback'
+        );
 
-      console.log('🔗 Google 로그인 시작:', data);
+        if (result.type === 'success' && result.url) {
+          // AuthContext의 deep link 핸들러가 처리
+          console.log('🔗 Google OAuth 콜백 URL:', result.url);
+        }
+      }
     } catch (error: any) {
       console.error('❌ Google 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Apple 로그인
-  const handleAppleLogin = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'apple',
-        options: {
-          redirectTo: 'filmory://auth/callback',
-        },
-      });
-
-      if (error) throw error;
-
-      console.log('🔗 Apple 로그인 시작:', data);
-    } catch (error: any) {
-      console.error('❌ Apple 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message);
+      Alert.alert('로그인 실패', error.message || 'Google 로그인에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -69,24 +53,25 @@ const LoginScreen = ({ navigation }: any) => {
     try {
       setLoading(true);
 
-      // 웹 환경과 모바일 환경에 따라 redirectTo 설정
-      const redirectTo = typeof window !== 'undefined'
-        ? window.location.origin
-        : 'filmory://auth/callback';
+      const { url } = await getKakaoAuthUrl();
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'kakao',
-        options: {
-          redirectTo,
-        },
-      });
+      console.log('🔗 Kakao 로그인 시작:', url);
 
-      if (error) throw error;
+      if (Platform.OS === 'web') {
+        window.location.href = url;
+      } else {
+        const result = await WebBrowser.openAuthSessionAsync(
+          url,
+          'filmory://auth/kakao/callback'
+        );
 
-      console.log('🔗 Kakao 로그인 시작:', data);
+        if (result.type === 'success' && result.url) {
+          console.log('🔗 Kakao OAuth 콜백 URL:', result.url);
+        }
+      }
     } catch (error: any) {
       console.error('❌ Kakao 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message);
+      Alert.alert('로그인 실패', error.message || 'Kakao 로그인에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -109,20 +94,15 @@ const LoginScreen = ({ navigation }: any) => {
           onPress={handleGoogleLogin}
           disabled={loading}
         >
-          <Ionicons name="logo-google" size={24} color={COLORS.gold} />
-          <Text style={styles.loginButtonText}>Google로 계속하기</Text>
+          {loading ? (
+            <ActivityIndicator color={COLORS.gold} />
+          ) : (
+            <>
+              <Ionicons name="logo-google" size={24} color={COLORS.gold} />
+              <Text style={styles.loginButtonText}>Google로 계속하기</Text>
+            </>
+          )}
         </TouchableOpacity>
-
-        {/* Apple 로그인 - 개발자 계정 필요로 임시 비활성화
-        <TouchableOpacity
-          style={styles.loginButton}
-          onPress={handleAppleLogin}
-          disabled={loading}
-        >
-          <Ionicons name="logo-apple" size={24} color={COLORS.gold} />
-          <Text style={styles.loginButtonText}>Apple로 계속하기</Text>
-        </TouchableOpacity>
-        */}
 
         {/* Kakao 로그인 */}
         <TouchableOpacity
