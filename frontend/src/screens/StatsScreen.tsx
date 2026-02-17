@@ -9,6 +9,7 @@ const { width } = Dimensions.get("window")
 const GENRE_COLORS = [COLORS.gold, COLORS.red, "#3498db", "#2ecc71", "#9b59b6", "#e67e22"]
 
 export default function StatsScreen() {
+  const currentYear = new Date().getFullYear()
   const [loading, setLoading] = useState(true)
   const defaultStats = {
     yearly_goal: 100,
@@ -32,7 +33,7 @@ export default function StatsScreen() {
     try {
       setLoading(true)
       const [statsData, monthlyDataRes, genreDataRes, tagsDataRes] = await Promise.all([
-        getOverallStats().catch((err) => {
+        getOverallStats(currentYear).catch((err) => {
           console.error('❌ getOverallStats 실패:', err.message)
           return null
         }),
@@ -87,7 +88,7 @@ export default function StatsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>통계</Text>
-        <Text style={styles.headerSubtitle}>2025년</Text>
+        <Text style={styles.headerSubtitle}>{currentYear}년</Text>
       </View>
 
       {/* Yearly Goal */}

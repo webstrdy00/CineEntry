@@ -1,18 +1,23 @@
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Image } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { useNavigation, useFocusEffect } from "@react-navigation/native"
+import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/native"
+import type { RouteProp } from "@react-navigation/native"
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
-import MovieCard from "../components/MovieCard"
 import FilterChip from "../components/FilterChip"
-import type { RootStackParamList, MovieStatus } from "../types"
+import type { RootStackParamList, TabParamList, MovieStatus } from "../types"
 import { getMovies } from "../services/movieService"
 
-type MoviesScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type MoviesScreenRootNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type MoviesScreenTabNavigationProp = BottomTabNavigationProp<TabParamList, "Movies">
+type MoviesScreenRouteProp = RouteProp<TabParamList, "Movies">
 
 export default function MoviesScreen() {
-  const navigation = useNavigation<MoviesScreenNavigationProp>()
+  const rootNavigation = useNavigation<MoviesScreenRootNavigationProp>()
+  const tabNavigation = useNavigation<MoviesScreenTabNavigationProp>()
+  const route = useRoute<MoviesScreenRouteProp>()
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [selectedFilter, setSelectedFilter] = useState<"all" | MovieStatus>("all")
@@ -27,6 +32,17 @@ export default function MoviesScreen() {
 
     return () => clearTimeout(timer)
   }, [searchQuery])
+
+  // Home의 "더 보기"에서 전달한 초기 필터 적용
+  useEffect(() => {
+    const initialFilter = route.params?.initialFilter
+    if (!initialFilter) return
+
+    setSelectedFilter(initialFilter)
+
+    // 초기 필터는 1회성으로만 적용하고 즉시 제거
+    tabNavigation.setParams({ initialFilter: undefined })
+  }, [route.params?.initialFilter, tabNavigation])
 
   // Load movies on screen focus
   useFocusEffect(
@@ -74,17 +90,84 @@ export default function MoviesScreen() {
     return result
   }, [movies, selectedFilter, debouncedSearchQuery])
 
-  const renderMovieCard = useCallback(
-    ({ item }: { item: typeof movies[0] }) => (
-      <View style={styles.movieCardWrapper}>
-        <MovieCard
-          movie={item}
-          onPress={() => navigation.navigate("MovieDetail", { id: item.id })}
-          showRating={true}
-        />
-      </View>
-    ),
-    [navigation]
+  const getStatusLabel = (status?: string) => {
+    if (status === "watching") return "보는 중"
+    if (status === "completed") return "완료"
+    return "보고 싶은"
+  }
+
+  const getStatusStyle = (status?: string) => {
+    if (status === "watching") {
+      return {
+        chip: styles.statusChipWatching,
+        text: styles.statusChipTextWatching,
+      }
+    }
+    if (status === "completed") {
+      return {
+        chip: styles.statusChipCompleted,
+        text: styles.statusChipTextCompleted,
+      }
+    }
+    return {
+      chip: styles.statusChipWatchlist,
+      text: styles.statusChipTextWatchlist,
+    }
+  }
+
+  const renderMovieItem = useCallback(
+    ({ item }: { item: typeof movies[0] }) => {
+      const statusStyle = getStatusStyle(item.status)
+
+      return (
+        <TouchableOpacity
+          style={styles.movieItem}
+          activeOpacity={0.8}
+          onPress={() => rootNavigation.navigate("MovieDetail", { id: item.id })}
+        >
+          {item.poster_url || item.poster ? (
+            <Image
+              source={{ uri: item.poster_url || item.poster }}
+              style={styles.poster}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.poster, styles.posterPlaceholder]}>
+              <Ionicons name="film-outline" size={22} color={COLORS.lightGray} />
+            </View>
+          )}
+
+          <View style={styles.movieInfo}>
+            <Text style={styles.movieTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {!!item.original_title && item.original_title !== item.title && (
+              <Text style={styles.originalTitle} numberOfLines={1}>
+                {item.original_title}
+              </Text>
+            )}
+
+            <View style={styles.metaRow}>
+              <View style={[styles.statusChip, statusStyle.chip]}>
+                <Text style={[styles.statusChipText, statusStyle.text]}>
+                  {getStatusLabel(item.status)}
+                </Text>
+              </View>
+
+              {item.rating && item.rating > 0 && (
+                <View style={styles.ratingRow}>
+                  <Ionicons name="star" size={14} color={COLORS.gold} />
+                  <Text style={styles.ratingText}>{Number(item.rating).toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={COLORS.lightGray} />
+        </TouchableOpacity>
+      )
+    },
+    [rootNavigation]
   )
 
   return (
@@ -92,7 +175,7 @@ export default function MoviesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>내 영화</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("MovieSearch")}>
+        <TouchableOpacity onPress={() => rootNavigation.navigate("MovieSearch")}>
           <Ionicons name="add-circle" size={28} color={COLORS.gold} />
         </TouchableOpacity>
       </View>
@@ -121,7 +204,7 @@ export default function MoviesScreen() {
         ))}
       </View>
 
-      {/* Movies Grid */}
+      {/* Movies List */}
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.gold} />
@@ -130,10 +213,9 @@ export default function MoviesScreen() {
       ) : (
         <FlatList
           data={filteredMovies}
-          renderItem={renderMovieCard}
+          renderItem={renderMovieItem}
           keyExtractor={(item) => item.id.toString()}
-          numColumns={2}
-          contentContainerStyle={styles.moviesGrid}
+          contentContainerStyle={styles.moviesList}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -191,14 +273,90 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     gap: 8,
   },
-  moviesGrid: {
+  moviesList: {
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  movieCardWrapper: {
+  movieItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 12,
+  },
+  poster: {
+    width: 56,
+    height: 84,
+    borderRadius: 8,
+    backgroundColor: COLORS.deepGray,
+  },
+  posterPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#3a3d4f",
+  },
+  movieInfo: {
     flex: 1,
-    margin: 6,
-    maxWidth: "48%",
+  },
+  movieTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.white,
+  },
+  originalTitle: {
+    fontSize: 13,
+    color: COLORS.lightGray,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  statusChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusChipWatchlist: {
+    backgroundColor: "rgba(212, 175, 55, 0.14)",
+    borderColor: "rgba(212, 175, 55, 0.45)",
+  },
+  statusChipWatching: {
+    backgroundColor: "rgba(93, 173, 226, 0.16)",
+    borderColor: "rgba(93, 173, 226, 0.5)",
+  },
+  statusChipCompleted: {
+    backgroundColor: "rgba(88, 214, 141, 0.16)",
+    borderColor: "rgba(88, 214, 141, 0.5)",
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  statusChipTextWatchlist: {
+    color: COLORS.gold,
+  },
+  statusChipTextWatching: {
+    color: "#5DADE2",
+  },
+  statusChipTextCompleted: {
+    color: "#58D68D",
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 12,
+    color: COLORS.white,
+    fontWeight: "600",
   },
   emptyContainer: {
     flex: 1,

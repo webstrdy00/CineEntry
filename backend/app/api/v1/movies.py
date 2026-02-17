@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
+from datetime import date
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.models.user_movie import UserMovie
@@ -228,6 +229,8 @@ async def add_movie(
 
     payload = user_movie_data.model_dump()
     payload["status"] = normalize_status_input(payload.get("status"))
+    if payload.get("status") == "completed" and payload.get("watch_date") is None:
+        payload["watch_date"] = date.today()
 
     # Create user movie
     user_movie = UserMovie(
@@ -321,6 +324,9 @@ async def update_movie(
     update_dict = update_data.model_dump(exclude_unset=True)
     if "status" in update_dict:
         update_dict["status"] = normalize_status_input(update_dict["status"])
+    next_status = update_dict.get("status", user_movie.status)
+    if next_status == "completed" and "watch_date" not in update_dict and user_movie.watch_date is None:
+        update_dict["watch_date"] = date.today()
 
     for field, value in update_dict.items():
         setattr(user_movie, field, value)

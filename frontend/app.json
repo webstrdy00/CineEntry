@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "영화 기록",
-    "slug": "movie-tracker-app",
+    "name": "Filmory",
+    "slug": "filmory",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -9,11 +9,11 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.movietracker.app",
+      "bundleIdentifier": "com.filmory.app",
       "associatedDomains": ["applinks:owblpingqcelupohuspg.supabase.co"]
     },
     "android": {
-      "package": "com.movietracker.app",
+      "package": "com.filmory.app",
       "intentFilters": [
         {
           "action": "VIEW",

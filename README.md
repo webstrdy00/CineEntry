@@ -1,4 +1,4 @@
-# Momento
+# Filmory
 
 - frontend : RN/Expo
 - backend : FastApi

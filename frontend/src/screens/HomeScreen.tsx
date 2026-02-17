@@ -17,6 +17,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
+  const currentYear = new Date().getFullYear()
 
   const defaultStats = {
     yearly_goal: 100,
@@ -41,7 +42,7 @@ export default function HomeScreen() {
 
       // API 호출
       const [statsData, watchingData, watchlistData, bestMoviesData] = await Promise.all([
-        getOverallStats().catch((err) => {
+        getOverallStats(currentYear).catch((err) => {
           console.error('❌ getOverallStats 실패:', err.message)
           return null
         }),
@@ -75,7 +76,7 @@ export default function HomeScreen() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currentYear])
 
   // 홈 화면 포커스 시마다 최신 데이터 재조회
   useFocusEffect(
@@ -100,7 +101,9 @@ export default function HomeScreen() {
     current: stats.yearly_progress || 0,
   }
 
-  const yearlyProgress = (yearlyGoal.current / yearlyGoal.target) * 100
+  const yearlyProgress = yearlyGoal.target > 0
+    ? Math.min(100, (yearlyGoal.current / yearlyGoal.target) * 100)
+    : 0
 
   return (
     <View style={styles.container}>
@@ -174,7 +177,7 @@ export default function HomeScreen() {
       <View style={styles.goalCard}>
         <View style={styles.goalHeader}>
           <Ionicons name="trophy-outline" size={24} color={COLORS.gold} />
-          <Text style={styles.goalTitle}>2025년 연간 목표</Text>
+          <Text style={styles.goalTitle}>{currentYear}년 연간 목표</Text>
         </View>
         <View style={styles.goalContent}>
           <Text style={styles.goalNumbers}>
@@ -219,7 +222,14 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>인생 영화</Text>
               <Ionicons name="star" size={20} color={COLORS.gold} style={{ marginLeft: 6 }} />
             </View>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.navigate("Main", {
+                  screen: "Movies",
+                  params: { initialFilter: "completed" },
+                })
+              }
+            >
               <Text style={styles.seeAllText}>더 보기</Text>
             </TouchableOpacity>
           </View>
@@ -241,7 +251,14 @@ export default function HomeScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>보고 싶은 영화</Text>
             {watchlistMovies.length > 0 && (
-              <TouchableOpacity>
+              <TouchableOpacity
+                onPress={() =>
+                  navigation.navigate("Main", {
+                    screen: "Movies",
+                    params: { initialFilter: "watchlist" },
+                  })
+                }
+              >
                 <Text style={styles.seeAllText}>더 보기</Text>
               </TouchableOpacity>
             )}

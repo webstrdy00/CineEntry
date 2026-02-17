@@ -48,13 +48,16 @@ async def get_user_stats(
         .scalar() or 0
     )
 
+    # watch_date가 비어있는 레거시 데이터는 created_at 날짜로 보정
+    watch_day_expr = func.coalesce(UserMovie.watch_date, func.date(UserMovie.created_at))
+
     # Total watched this year
     yearly_watched = (
         db.query(func.count(UserMovie.id))
         .filter(
             UserMovie.user_id == user_id,
             UserMovie.status == "completed",
-            extract("year", UserMovie.watch_date) == year,
+            extract("year", watch_day_expr) == year,
         )
         .scalar() or 0
     )
@@ -116,16 +119,17 @@ async def get_monthly_stats(
 
     Returns movie count per month for the last N months
     """
+    watch_day_expr = func.coalesce(UserMovie.watch_date, func.date(UserMovie.created_at))
+
     # Get monthly aggregation
     results = (
         db.query(
-            func.to_char(UserMovie.watch_date, 'YYYY-MM').label('month'),
+            func.to_char(watch_day_expr, 'YYYY-MM').label('month'),
             func.count(UserMovie.id).label('count')
         )
         .filter(
             UserMovie.user_id == user_id,
             UserMovie.status == "completed",
-            UserMovie.watch_date.isnot(None),
         )
         .group_by(text('month'))
         .order_by(text('month DESC'))
@@ -287,15 +291,17 @@ async def calculate_streak(db: Session, user_id: str) -> int:
     Returns:
         Current streak in days
     """
+    # watch_date가 비어있는 레거시 데이터는 created_at 날짜로 보정
+    watch_day_expr = func.coalesce(UserMovie.watch_date, func.date(UserMovie.created_at))
+
     # Get all watch dates, sorted descending
     watch_dates = (
-        db.query(UserMovie.watch_date)
+        db.query(watch_day_expr.label("watch_day"))
         .filter(
             UserMovie.user_id == user_id,
             UserMovie.status == "completed",
-            UserMovie.watch_date.isnot(None),
         )
-        .order_by(UserMovie.watch_date.desc())
+        .order_by(text("watch_day DESC"))
         .distinct()
         .all()
     )
@@ -304,7 +310,9 @@ async def calculate_streak(db: Session, user_id: str) -> int:
         return 0
 
     # Convert to list of dates
-    dates = [row[0] for row in watch_dates]
+    dates = [row[0] for row in watch_dates if row[0] is not None]
+    if not dates:
+        return 0
 
     # Check if most recent date is today or yesterday
     today = date.today()

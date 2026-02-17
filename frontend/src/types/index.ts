@@ -3,6 +3,7 @@
  *
  * 모든 데이터 모델과 인터페이스 정의
  */
+import type { NavigatorScreenParams } from "@react-navigation/native"
 
 // ============================================
 // Movie Related Types
@@ -115,7 +116,7 @@ export type RootStackParamList = {
   EmailLogin: undefined
   SignUp: undefined
   ForgotPassword: undefined
-  Main: undefined
+  Main: NavigatorScreenParams<TabParamList> | undefined
   MovieDetail: { id: number }
   MovieSearch: undefined
   CollectionDetail: { id: number }
@@ -123,7 +124,7 @@ export type RootStackParamList = {
 
 export type TabParamList = {
   Home: undefined
-  Movies: undefined
+  Movies: { initialFilter?: "all" | MovieStatus } | undefined
   Stats: undefined
   Profile: undefined
 }
