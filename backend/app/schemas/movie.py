@@ -113,6 +113,9 @@ class FlatMovieResponse(BaseModel):
     genre: Optional[str] = None
     director: Optional[str] = None
     synopsis: Optional[str] = None
+    kobis_code: Optional[str] = None
+    tmdb_id: Optional[int] = None
+    kmdb_id: Optional[str] = None
     tags: List[MovieTagItem] = Field(default_factory=list)
 
     # 메타데이터

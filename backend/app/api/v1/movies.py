@@ -92,6 +92,9 @@ async def get_user_movies(
             genre=um.movie.genre,
             director=um.movie.director,
             synopsis=um.movie.synopsis,
+            kobis_code=um.movie.kobis_code,
+            tmdb_id=um.movie.tmdb_id,
+            kmdb_id=um.movie.kmdb_id,
 
             # 메타데이터
             created_at=um.created_at,
@@ -175,6 +178,9 @@ async def get_movie_detail(
         genre=user_movie.movie.genre,
         director=user_movie.movie.director,
         synopsis=user_movie.movie.synopsis,
+        kobis_code=user_movie.movie.kobis_code,
+        tmdb_id=user_movie.movie.tmdb_id,
+        kmdb_id=user_movie.movie.kmdb_id,
         tags=build_tag_items(user_movie),
 
         # 메타데이터
@@ -276,6 +282,9 @@ async def add_movie(
         genre=user_movie.movie.genre,
         director=user_movie.movie.director,
         synopsis=user_movie.movie.synopsis,
+        kobis_code=user_movie.movie.kobis_code,
+        tmdb_id=user_movie.movie.tmdb_id,
+        kmdb_id=user_movie.movie.kmdb_id,
         tags=build_tag_items(user_movie),
 
         # 메타데이터
@@ -360,6 +369,9 @@ async def update_movie(
         genre=user_movie.movie.genre,
         director=user_movie.movie.director,
         synopsis=user_movie.movie.synopsis,
+        kobis_code=user_movie.movie.kobis_code,
+        tmdb_id=user_movie.movie.tmdb_id,
+        kmdb_id=user_movie.movie.kmdb_id,
 
         # 메타데이터
         created_at=user_movie.created_at,
