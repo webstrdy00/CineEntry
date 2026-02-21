@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { useState, useCallback } from "react"
 import { COLORS } from "../constants/colors"
@@ -15,10 +16,13 @@ type IoniconName = keyof typeof Ionicons.glyphMap
 
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>()
+  const insets = useSafeAreaInsets()
   const { signOut, user: authUser } = useAuth()
 
   // State
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [stats, setStats] = useState<any>(null)
   const [collections, setCollections] = useState<any[]>([])
@@ -33,6 +37,7 @@ export default function ProfileScreen() {
   const loadData = async () => {
     try {
       setLoading(true)
+      setError(false)
       const [userData, statsData, collectionsData] = await Promise.all([
         getCurrentUser().catch(() => null),
         getOverallStats().catch(() => null),
@@ -44,10 +49,17 @@ export default function ProfileScreen() {
       setCollections(collectionsData)
     } catch (error) {
       console.error('❌ ProfileScreen 데이터 로드 실패:', error)
+      setError(true)
     } finally {
       setLoading(false)
     }
   }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [])
 
   const handleLogout = () => {
     Alert.alert(
@@ -76,6 +88,22 @@ export default function ProfileScreen() {
     )
   }
 
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+        <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+        <TouchableOpacity
+          onPress={loadData}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+        >
+          <Ionicons name="refresh" size={18} color={COLORS.gold} />
+          <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
   const menuItems: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "person-outline", label: "프로필 수정", action: "editProfile" },
     { icon: "notifications-outline", label: "알림 설정", action: "notifications" },
@@ -86,9 +114,15 @@ export default function ProfileScreen() {
   ]
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+      }
+    >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>프로필</Text>
       </View>
 
@@ -198,7 +232,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   headerTitle: {

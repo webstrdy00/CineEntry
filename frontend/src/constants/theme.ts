@@ -39,7 +39,6 @@ export const SPACING = {
 
   // Screen specific
   screenHorizontal: 20,  // 화면 좌우 패딩
-  screenTop: 60,         // 화면 상단 패딩 (status bar 고려)
   sectionBottom: 24,     // 섹션 간 여백
   cardPadding: 16,       // 카드 내부 패딩
 } as const

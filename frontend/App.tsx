@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { Ionicons } from "@expo/vector-icons"
 import { ActivityIndicator, View, StyleSheet } from "react-native"
+import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
 import LoginScreen from "./src/screens/LoginScreen"
@@ -147,9 +148,11 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <RootNavigator />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <RootNavigator />
+      </AuthProvider>
+    </SafeAreaProvider>
   )
 }
 

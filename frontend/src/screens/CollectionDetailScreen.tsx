@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, ActivityIndicator } from "react-native"
+import { useState, useCallback } from "react"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native"
-import { useCallback } from "react"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { RouteProp } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
@@ -23,9 +23,11 @@ type CollectionDetailNavigationProp = NativeStackNavigationProp<RootStackParamLi
 export default function CollectionDetailScreen() {
   const route = useRoute<CollectionDetailRouteProp>()
   const navigation = useNavigation<CollectionDetailNavigationProp>()
+  const insets = useSafeAreaInsets()
   const { id } = route.params
 
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [collection, setCollection] = useState<any>(null)
   const [isEditMode, setIsEditMode] = useState(false)
   const [collectionName, setCollectionName] = useState("")
@@ -53,6 +55,12 @@ export default function CollectionDetailScreen() {
       setLoading(false)
     }
   }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [id])
 
   const handleSave = async () => {
     try {
@@ -149,9 +157,14 @@ export default function CollectionDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+        }
+      >
         {/* 헤더 */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="chevron-back" size={28} color={COLORS.white} />
           </TouchableOpacity>
@@ -272,7 +285,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   backButton: {

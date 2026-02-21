@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Image } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Image, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { RouteProp } from "@react-navigation/native"
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
@@ -18,11 +19,14 @@ export default function MoviesScreen() {
   const rootNavigation = useNavigation<MoviesScreenRootNavigationProp>()
   const tabNavigation = useNavigation<MoviesScreenTabNavigationProp>()
   const route = useRoute<MoviesScreenRouteProp>()
+  const insets = useSafeAreaInsets()
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [selectedFilter, setSelectedFilter] = useState<"all" | MovieStatus>("all")
   const [movies, setMovies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
 
   // Debounce search query (300ms delay)
   useEffect(() => {
@@ -54,16 +58,24 @@ export default function MoviesScreen() {
   const loadMovies = async () => {
     try {
       setLoading(true)
+      setError(false)
       const status = selectedFilter === "all" ? undefined : selectedFilter
       const data = await getMovies(status)
       setMovies(data)
     } catch (error) {
       console.error('❌ 영화 목록 로드 실패:', error)
       setMovies([])
+      setError(true)
     } finally {
       setLoading(false)
     }
   }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadMovies()
+    setRefreshing(false)
+  }, [selectedFilter])
 
   const filters: Array<{ id: "all" | MovieStatus; label: string }> = [
     { id: "all", label: "전체" },
@@ -173,7 +185,7 @@ export default function MoviesScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>내 영화</Text>
         <TouchableOpacity onPress={() => rootNavigation.navigate("MovieSearch")}>
           <Ionicons name="add-circle" size={28} color={COLORS.gold} />
@@ -210,6 +222,18 @@ export default function MoviesScreen() {
           <ActivityIndicator size="large" color={COLORS.gold} />
           <Text style={styles.loadingText}>영화 목록을 불러오는 중...</Text>
         </View>
+      ) : error ? (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+          <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+          <TouchableOpacity
+            onPress={loadMovies}
+            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+          >
+            <Ionicons name="refresh" size={18} color={COLORS.gold} />
+            <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filteredMovies}
@@ -217,6 +241,9 @@ export default function MoviesScreen() {
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.moviesList}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="film-outline" size={64} color={COLORS.lightGray} />
@@ -242,7 +269,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   headerTitle: {

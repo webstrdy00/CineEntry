@@ -12,11 +12,13 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/colors';
 import { register } from '../services/authService';
 import { useAuth } from '../contexts/AuthContext';
 
 const SignUpScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -75,7 +77,7 @@ const SignUpScreen = ({ navigation }: any) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 12 }]}>
         {/* 뒤로 가기 버튼 */}
         <TouchableOpacity
           style={styles.backButton}
@@ -170,7 +172,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 30,
-    paddingTop: 60,
     paddingBottom: 40,
   },
   backButton: {

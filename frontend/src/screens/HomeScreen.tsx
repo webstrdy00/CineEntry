@@ -1,9 +1,10 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { LinearGradient } from "expo-linear-gradient"
 import { useState, useCallback } from "react"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { COLORS } from "../constants/colors"
 import MovieCard from "../components/MovieCard"
 import StatCard from "../components/StatCard"
@@ -17,6 +18,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
+  const insets = useSafeAreaInsets()
   const currentYear = new Date().getFullYear()
 
   const defaultStats = {
@@ -29,6 +31,8 @@ export default function HomeScreen() {
 
   // State
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
   const [stats, setStats] = useState<any>(defaultStats)
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
@@ -37,6 +41,7 @@ export default function HomeScreen() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
+      setError(false)
 
       console.log('📡 HomeScreen: API 호출 시작')
 
@@ -73,10 +78,17 @@ export default function HomeScreen() {
       )
     } catch (error: any) {
       console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
+      setError(true)
     } finally {
       setLoading(false)
     }
   }, [currentYear])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [loadData])
 
   // 홈 화면 포커스 시마다 최신 데이터 재조회
   useFocusEffect(
@@ -95,6 +107,22 @@ export default function HomeScreen() {
     )
   }
 
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+        <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+        <TouchableOpacity
+          onPress={loadData}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+        >
+          <Ionicons name="refresh" size={18} color={COLORS.gold} />
+          <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
   // 연간 목표 데이터
   const yearlyGoal = {
     target: stats.yearly_goal || 100,
@@ -107,9 +135,15 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+        }
+      >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <View>
             <Text style={styles.greeting}>어서오세요 :)</Text>
             <Text style={styles.subtitle}>오늘은 무슨 영화를 보셨나요?</Text>
@@ -307,7 +341,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   greeting: {

@@ -11,11 +11,13 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/colors';
 import { login } from '../services/authService';
 import { useAuth } from '../contexts/AuthContext';
 
 const EmailLoginScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +57,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: insets.top + 12 }]}>
         {/* 뒤로 가기 버튼 */}
         <TouchableOpacity
           style={styles.backButton}
@@ -131,7 +133,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 30,
-    paddingTop: 60,
   },
   backButton: {
     width: 40,

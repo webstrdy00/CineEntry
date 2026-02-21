@@ -1,5 +1,8 @@
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator } from "react-native"
-import { useState, useEffect } from "react"
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native"
+import { Ionicons } from "@expo/vector-icons"
+import { useState, useCallback } from "react"
+import { useFocusEffect } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { COLORS } from "../constants/colors"
 import StatCard from "../components/StatCard"
 import { getOverallStats, getMonthlyStats, getGenreStats, getTagStats } from "../services/statsService"
@@ -9,8 +12,11 @@ const { width } = Dimensions.get("window")
 const GENRE_COLORS = [COLORS.gold, COLORS.red, "#3498db", "#2ecc71", "#9b59b6", "#e67e22"]
 
 export default function StatsScreen() {
+  const insets = useSafeAreaInsets()
   const currentYear = new Date().getFullYear()
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
   const defaultStats = {
     yearly_goal: 100,
     yearly_progress: 0,
@@ -25,13 +31,16 @@ export default function StatsScreen() {
   const [genreStats, setGenreStats] = useState<any[]>([])
   const [topTags, setTopTags] = useState<any[]>([])
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useFocusEffect(
+    useCallback(() => {
+      loadData()
+    }, [])
+  )
 
   const loadData = async () => {
     try {
       setLoading(true)
+      setError(false)
       const [statsData, monthlyDataRes, genreDataRes, tagsDataRes] = await Promise.all([
         getOverallStats(currentYear).catch((err) => {
           console.error('❌ getOverallStats 실패:', err.message)
@@ -61,16 +70,39 @@ export default function StatsScreen() {
       setTopTags(tagsDataRes)
     } catch (error) {
       console.error('❌ StatsScreen 데이터 로드 실패:', error)
+      setError(true)
     } finally {
       setLoading(false)
     }
   }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [])
 
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
         <Text style={{ color: COLORS.lightGray, marginTop: 12 }}>통계를 불러오는 중...</Text>
+      </View>
+    )
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+        <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+        <TouchableOpacity
+          onPress={loadData}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+        >
+          <Ionicons name="refresh" size={18} color={COLORS.gold} />
+          <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+        </TouchableOpacity>
       </View>
     )
   }
@@ -84,9 +116,15 @@ export default function StatsScreen() {
   const maxCount = monthlyData.length > 0 ? Math.max(...monthlyData.map((d) => d.count)) : 1
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+      }
+    >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>통계</Text>
         <Text style={styles.headerSubtitle}>{currentYear}년</Text>
       </View>
@@ -168,7 +206,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   headerTitle: {

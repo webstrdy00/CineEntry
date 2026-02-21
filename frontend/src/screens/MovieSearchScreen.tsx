@@ -13,6 +13,7 @@ import {
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 
 import { COLORS } from "../constants/colors"
@@ -117,6 +118,7 @@ const createDraftFromItem = (movie: MovieSearchItem): MovieDraft => ({
 
 export default function MovieSearchScreen() {
   const navigation = useNavigation<MovieSearchScreenNavigationProp>()
+  const insets = useSafeAreaInsets()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<MovieSearchItem[]>([])
@@ -607,7 +609,7 @@ export default function MovieSearchScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={selectedMovie ? () => handleBackFromEditor() : () => navigation.goBack()}
@@ -661,7 +663,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   backButton: {
