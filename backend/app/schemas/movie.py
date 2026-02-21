@@ -71,6 +71,7 @@ class UserMovieUpdate(BaseModel):
     progress: Optional[int] = None
     is_best_movie: Optional[bool] = None
     genre: Optional[str] = None  # Movie 테이블 업데이트용
+    runtime: Optional[int] = None  # Movie 테이블 업데이트용
 
 
 class UserMovieResponse(UserMovieBase):

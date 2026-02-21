@@ -104,6 +104,11 @@ export default function ProfileScreen() {
     )
   }
 
+  const implementedActions: Record<string, () => void> = {
+    editProfile: () => navigation.navigate("EditProfile"),
+    about: () => navigation.navigate("About"),
+  }
+
   const menuItems: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "person-outline", label: "프로필 수정", action: "editProfile" },
     { icon: "notifications-outline", label: "알림 설정", action: "notifications" },
@@ -160,27 +165,21 @@ export default function ProfileScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="folder-outline" size={20} color={COLORS.gold} />
-            <Text style={styles.sectionTitle}>내 컬렉션</Text>
+            <Ionicons name="sparkles" size={20} color={COLORS.gold} />
+            <Text style={styles.sectionTitle}>컬렉션</Text>
           </View>
         </View>
 
-        {/* Collection List */}
         <View style={styles.collectionList}>
           {collections.length > 0 ? (
-            <>
-              {collections.map((collection) => (
+            collections.map((collection) => (
                 <TouchableOpacity
                   key={collection.id}
                   style={styles.collectionItem}
                   onPress={() => navigation.navigate("CollectionDetail", { id: collection.id })}
                 >
                   <View style={styles.collectionLeft}>
-                    <Ionicons
-                      name={collection.is_auto ? "sparkles" : "folder"}
-                      size={20}
-                      color={collection.is_auto ? COLORS.gold : COLORS.white}
-                    />
+                    <Ionicons name="sparkles" size={20} color={COLORS.gold} />
                     <View style={styles.collectionInfo}>
                       <Text style={styles.collectionName}>{collection.name}</Text>
                       <Text style={styles.collectionCount}>{collection.movie_count}편</Text>
@@ -188,21 +187,14 @@ export default function ProfileScreen() {
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
                 </TouchableOpacity>
-              ))}
-            </>
+              ))
           ) : (
             <View style={styles.emptyCollections}>
-              <Ionicons name="folder-outline" size={40} color={COLORS.lightGray} />
-              <Text style={styles.emptyText}>아직 컬렉션이 없습니다</Text>
+              <Ionicons name="sparkles" size={40} color={COLORS.lightGray} />
+              <Text style={styles.emptyText}>영화를 기록하면 자동으로 컬렉션이 생성됩니다</Text>
             </View>
           )}
         </View>
-
-        {/* Add New Collection Button - separated from list */}
-        <TouchableOpacity style={styles.addCollectionButton} onPress={() => Alert.alert("준비 중", "컬렉션 생성 기능이 곧 추가될 예정입니다.")}>
-          <Ionicons name="add-circle-outline" size={20} color={COLORS.gold} />
-          <Text style={styles.addCollectionText}>새 컬렉션 만들기</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Divider: Collections ~ Menu */}
@@ -216,15 +208,28 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>설정</Text>
           </View>
         </View>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity key={index} style={[styles.menuItem, { opacity: 0.5 }]} onPress={() => Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")}>
-            <View style={styles.menuItemLeft}>
-              <Ionicons name={item.icon} size={24} color={COLORS.gold} />
-              <Text style={styles.menuItemText}>{item.label} (준비 중)</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
-          </TouchableOpacity>
-        ))}
+        {menuItems.map((item, index) => {
+          const isImplemented = !!implementedActions[item.action]
+          return (
+            <TouchableOpacity
+              key={index}
+              style={[styles.menuItem, !isImplemented && { opacity: 0.5 }]}
+              onPress={() => {
+                if (isImplemented) {
+                  implementedActions[item.action]()
+                } else {
+                  Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")
+                }
+              }}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name={item.icon} size={24} color={COLORS.gold} />
+                <Text style={styles.menuItemText}>{item.label}{!isImplemented ? " (준비 중)" : ""}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
+            </TouchableOpacity>
+          )
+        })}
       </View>
 
       {/* Logout Button */}
@@ -364,24 +369,6 @@ const styles = StyleSheet.create({
   collectionCount: {
     fontSize: 13,
     color: COLORS.lightGray,
-  },
-  addCollectionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(212, 175, 55, 0.1)",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.gold,
-    borderStyle: "dashed",
-    gap: 8,
-    marginTop: 12,
-  },
-  addCollectionText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.gold,
   },
   menuSection: {
     marginHorizontal: 20,

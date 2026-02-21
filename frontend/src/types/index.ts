@@ -120,6 +120,8 @@ export type RootStackParamList = {
   MovieDetail: { id: number }
   MovieSearch: undefined
   CollectionDetail: { id: number }
+  EditProfile: undefined
+  About: undefined
 }
 
 export type TabParamList = {

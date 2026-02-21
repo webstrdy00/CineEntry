@@ -32,6 +32,12 @@ async def get_user_collections(
     """
     Get all collections for the current user with movie count
     """
+    # 기존 사용자에게 자동 컬렉션이 없으면 생성
+    try:
+        auto_collection_service.create_default_collections(user_id, db)
+    except Exception:
+        pass
+
     collections = (
         db.query(
             Collection,

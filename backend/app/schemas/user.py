@@ -31,6 +31,7 @@ class UserResponse(UserBase):
     """User 응답 스키마"""
     id: UUID
     yearly_goal: int
+    auth_provider: Optional[str] = "email"
     created_at: datetime
     updated_at: datetime
 

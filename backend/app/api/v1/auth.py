@@ -31,6 +31,7 @@ from app.services.auth_service import (
 )
 from app.middleware.auth_middleware import get_current_user_id
 from app.config import settings
+from app.services.auto_collection_service import auto_collection_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -75,6 +76,12 @@ async def register(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+
+    # 기본 자동 컬렉션 생성
+    try:
+        auto_collection_service.create_default_collections(str(new_user.id), db)
+    except Exception:
+        pass  # 컬렉션 생성 실패해도 회원가입은 진행
 
     # 토큰 발급
     tokens = create_tokens(new_user.id, new_user.token_version)
@@ -400,6 +407,12 @@ async def google_auth_callback(
         db.commit()
         db.refresh(user)
 
+        # 기본 자동 컬렉션 생성
+        try:
+            auto_collection_service.create_default_collections(str(user.id), db)
+        except Exception:
+            pass
+
     # 토큰 발급
     tokens = create_tokens(user.id, user.token_version)
 
@@ -553,6 +566,12 @@ async def kakao_auth_callback(
         db.add(user)
         db.commit()
         db.refresh(user)
+
+        # 기본 자동 컬렉션 생성
+        try:
+            auto_collection_service.create_default_collections(str(user.id), db)
+        except Exception:
+            pass
 
     # 토큰 발급
     tokens = create_tokens(user.id, user.token_version)

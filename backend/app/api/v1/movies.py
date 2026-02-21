@@ -15,6 +15,7 @@ from app.schemas.movie import (
 )
 from app.schemas.common import BaseResponse
 from app.services.external_api_service import external_api_service
+from app.services.auto_collection_service import auto_collection_service
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -292,6 +293,12 @@ async def add_movie(
         updated_at=user_movie.updated_at,
     )
 
+    # 자동 컬렉션 동기화
+    try:
+        auto_collection_service.sync_all_for_user(user_id, db)
+    except Exception:
+        pass
+
     return BaseResponse(
         success=True,
         message="Movie added successfully",
@@ -337,11 +344,17 @@ async def update_movie(
     if next_status == "completed" and "watch_date" not in update_dict and user_movie.watch_date is None:
         update_dict["watch_date"] = date.today()
 
-    # genre는 Movie 테이블에 저장
+    # genre, runtime은 Movie 테이블에 저장
+    movie_updates = {}
     if "genre" in update_dict:
+        movie_updates["genre"] = update_dict.pop("genre")
+    if "runtime" in update_dict:
+        movie_updates["runtime"] = update_dict.pop("runtime")
+    if movie_updates:
         movie = db.query(Movie).filter(Movie.id == user_movie.movie_id).first()
         if movie:
-            movie.genre = update_dict.pop("genre")
+            for field, value in movie_updates.items():
+                setattr(movie, field, value)
 
     for field, value in update_dict.items():
         setattr(user_movie, field, value)
@@ -384,6 +397,12 @@ async def update_movie(
         updated_at=user_movie.updated_at,
     )
 
+    # 자동 컬렉션 동기화
+    try:
+        auto_collection_service.sync_all_for_user(user_id, db)
+    except Exception:
+        pass
+
     return BaseResponse(
         success=True,
         message="Movie updated successfully",
@@ -414,6 +433,12 @@ async def delete_movie(
 
     db.delete(user_movie)
     db.commit()
+
+    # 자동 컬렉션 동기화
+    try:
+        auto_collection_service.sync_all_for_user(user_id, db)
+    except Exception:
+        pass
 
     return BaseResponse(
         success=True,

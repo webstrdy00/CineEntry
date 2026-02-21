@@ -19,6 +19,8 @@ import ProfileScreen from "./src/screens/ProfileScreen"
 import MovieDetailScreen from "./src/screens/MovieDetailScreen"
 import MovieSearchScreen from "./src/screens/MovieSearchScreen"
 import CollectionDetailScreen from "./src/screens/CollectionDetailScreen"
+import EditProfileScreen from "./src/screens/EditProfileScreen"
+import AboutScreen from "./src/screens/AboutScreen"
 
 import type { RootStackParamList, TabParamList } from "./src/types"
 import { COLORS } from "./src/constants/colors"
@@ -122,6 +124,16 @@ function MainStack() {
         options={{
           headerShown: false,
         }}
+      />
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   )

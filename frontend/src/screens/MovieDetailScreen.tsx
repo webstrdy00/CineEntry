@@ -55,9 +55,13 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
   const [showTagPicker, setShowTagPicker] = useState(false)
   const [newTagInput, setNewTagInput] = useState("")
+  const [isBestMovie, setIsBestMovie] = useState(false)
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [showStartDateModal, setShowStartDateModal] = useState(false)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
+  const [showProgressModal, setShowProgressModal] = useState(false)
+  const [pendingProgress, setPendingProgress] = useState("")
+  const [pendingRuntime, setPendingRuntime] = useState("")
   const [pendingRating, setPendingRating] = useState(0)
   const [pendingReview, setPendingReview] = useState("")
 
@@ -79,6 +83,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setRating(movieData.rating || 0)
       setReview(movieData.review || "")
       setStatus(movieData.status || "watchlist")
+      setIsBestMovie(movieData.is_best_movie || false)
       setGenreList(movieData.genre ? movieData.genre.split(",").map((g: string) => g.trim()).filter(Boolean) : [])
       setMovieTags(currentTags)
       setAllTags(tagsData)
@@ -221,6 +226,57 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     if (status !== "completed") return
     await persistStatus("completed", { rating, review, silent: true })
   }, [persistStatus, rating, review, status])
+
+  const handleToggleBestMovie = useCallback(async () => {
+    if (isSaving) return
+    const nextValue = !isBestMovie
+    setIsBestMovie(nextValue)
+    try {
+      setIsSaving(true)
+      const updatedMovie = await updateMovie(id, { is_best_movie: nextValue })
+      setMovie(updatedMovie)
+      setIsBestMovie(updatedMovie.is_best_movie || false)
+    } catch (error) {
+      console.error("인생 영화 토글 실패:", error)
+      setIsBestMovie(!nextValue)
+      Alert.alert("오류", "인생 영화 설정에 실패했습니다.")
+    } finally {
+      setIsSaving(false)
+    }
+  }, [id, isBestMovie, isSaving])
+
+  const openProgressModal = () => {
+    setPendingProgress(String(watchingProgressMinutes || ""))
+    setPendingRuntime(String(watchingRuntimeMinutes || ""))
+    setShowProgressModal(true)
+  }
+
+  const handleSaveProgress = async () => {
+    const minutes = parseInt(pendingProgress, 10)
+    if (pendingProgress.trim() && (isNaN(minutes) || minutes < 0)) {
+      Alert.alert("알림", "올바른 시청 시간(분)을 입력해주세요.")
+      return
+    }
+    const runtimeVal = parseInt(pendingRuntime, 10)
+    if (pendingRuntime.trim() && (isNaN(runtimeVal) || runtimeVal < 0)) {
+      Alert.alert("알림", "올바른 상영 시간(분)을 입력해주세요.")
+      return
+    }
+    setShowProgressModal(false)
+    try {
+      setIsSaving(true)
+      const payload: any = {}
+      if (pendingProgress.trim()) payload.progress = minutes
+      if (pendingRuntime.trim()) payload.runtime = runtimeVal
+      const updatedMovie = await updateMovie(id, payload)
+      setMovie(updatedMovie)
+    } catch (error) {
+      console.error("진행 시간 저장 실패:", error)
+      Alert.alert("오류", "진행 시간 저장에 실패했습니다.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const GENRE_PRESETS = [
     "드라마", "액션", "코미디", "스릴러", "로맨스", "SF", "호러",
@@ -500,9 +556,14 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color={COLORS.white} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.menuButton} onPress={() => setShowActionMenu(true)}>
-            <Ionicons name="ellipsis-horizontal" size={22} color={COLORS.white} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.bestMovieButton} onPress={() => void handleToggleBestMovie()} disabled={isSaving}>
+              <Ionicons name={isBestMovie ? "heart" : "heart-outline"} size={22} color={isBestMovie ? COLORS.red : COLORS.white} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuButton} onPress={() => setShowActionMenu(true)}>
+              <Ionicons name="ellipsis-horizontal" size={22} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.heroContent}>
@@ -640,15 +701,15 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         {status === "watching" && (
           <View style={styles.statusSection}>
             <View style={styles.statusSplitRow}>
-              <View style={[styles.statusInfoCard, styles.statusInfoCardPrimary]}>
+              <TouchableOpacity style={[styles.statusInfoCard, styles.statusInfoCardPrimary]} onPress={openProgressModal} disabled={isSaving}>
                 <Text style={styles.statusInfoLabel}>시청 진행</Text>
                 <View style={styles.progressMainRow}>
                   <Text style={styles.progressMainText}>{watchingProgressMinutes}</Text>
                   <Text style={styles.progressMainSubText}>분 / {watchingRuntimeMinutes}분</Text>
                 </View>
                 <View style={styles.progressBarTrack}><View style={[styles.progressBarFill, { width: `${watchingProgressPercent}%` }]} /></View>
-                <Text style={styles.progressHint}>{watchingProgressLabel}</Text>
-              </View>
+                <Text style={styles.progressHint}>{watchingProgressLabel} · 탭하여 수정</Text>
+              </TouchableOpacity>
 
               <View style={[styles.statusInfoCard, styles.statusInfoCardSecondary]}>
                 <Text style={styles.statusInfoLabel}>시작일</Text>
@@ -832,6 +893,50 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           </View>
         </View>
       </Modal>
+
+      <Modal visible={showProgressModal} transparent animationType="fade" onRequestClose={() => setShowProgressModal(false)}>
+        <View style={styles.centeredBackdrop}>
+          <TouchableOpacity style={styles.modalDismissLayer} activeOpacity={1} onPress={() => setShowProgressModal(false)} />
+          <View style={styles.dateModalCard}>
+            <Text style={styles.modalTitle}>시청 진행 시간</Text>
+            <Text style={styles.modalSubtitle}>시청 시간과 총 상영시간을 입력해 주세요.</Text>
+
+            <Text style={styles.progressFieldLabel}>현재 시청 시간</Text>
+            <View style={styles.progressInputRow}>
+              <TextInput
+                style={styles.progressInput}
+                value={pendingProgress}
+                onChangeText={(text) => setPendingProgress(text.replace(/[^0-9]/g, ""))}
+                placeholder="0"
+                placeholderTextColor={COLORS.lightGray}
+                keyboardType="number-pad"
+                maxLength={4}
+                autoFocus
+              />
+              <Text style={styles.progressInputUnit}>분</Text>
+            </View>
+
+            <Text style={styles.progressFieldLabel}>총 상영시간</Text>
+            <View style={styles.progressInputRow}>
+              <TextInput
+                style={styles.progressInput}
+                value={pendingRuntime}
+                onChangeText={(text) => setPendingRuntime(text.replace(/[^0-9]/g, ""))}
+                placeholder="0"
+                placeholderTextColor={COLORS.lightGray}
+                keyboardType="number-pad"
+                maxLength={4}
+              />
+              <Text style={styles.progressInputUnit}>분</Text>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowProgressModal(false)}><Text style={styles.modalCancelButtonText}>취소</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.modalConfirmButton, isSaving && styles.disabledButton]} onPress={() => void handleSaveProgress()} disabled={isSaving}><Text style={styles.modalConfirmButtonText}>저장</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -842,6 +947,13 @@ const styles = StyleSheet.create({
     paddingTop: 48, paddingHorizontal: 16, paddingBottom: 8,
   },
   backButton: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: "center", alignItems: "center",
+  },
+  headerRight: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+  },
+  bestMovieButton: {
     width: 44, height: 44, borderRadius: 22,
     justifyContent: "center", alignItems: "center",
   },
@@ -962,6 +1074,13 @@ const styles = StyleSheet.create({
   modalCancelButtonText: { color: COLORS.lightGray, fontSize: 14, fontWeight: "600" },
   modalConfirmButton: { flex: 1, borderRadius: 10, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center", paddingVertical: 12 },
   modalConfirmButtonText: { color: COLORS.darkNavy, fontSize: 14, fontWeight: "700" },
+  progressFieldLabel: { color: COLORS.lightGray, fontSize: 13, fontWeight: "600", marginTop: 12, marginBottom: 4 },
+  progressInputRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 },
+  progressInput: {
+    flex: 1, backgroundColor: COLORS.darkNavy, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.16)",
+    paddingHorizontal: 16, paddingVertical: 14, color: COLORS.white, fontSize: 24, fontWeight: "700", textAlign: "center",
+  },
+  progressInputUnit: { color: COLORS.white, fontSize: 18, fontWeight: "600" },
   disabledButton: { opacity: 0.7 },
   bottomPadding: { height: 40 },
 })

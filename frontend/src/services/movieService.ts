@@ -22,6 +22,7 @@ export interface UserMovieUpdate {
   progress?: number;
   is_best_movie?: boolean;
   genre?: string;
+  runtime?: number;
 }
 
 export interface MovieSearchParams {
