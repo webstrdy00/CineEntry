@@ -9,7 +9,6 @@ import type { RootStackParamList } from "../types"
 import { useAuth } from "../contexts/AuthContext"
 import { getCurrentUser } from "../services/userService"
 import { getOverallStats } from "../services/statsService"
-import { getCollections } from "../services/collectionService"
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 type IoniconName = keyof typeof Ionicons.glyphMap
@@ -25,8 +24,6 @@ export default function ProfileScreen() {
   const [error, setError] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [stats, setStats] = useState<any>(null)
-  const [collections, setCollections] = useState<any[]>([])
-
   // Load data on screen focus
   useFocusEffect(
     useCallback(() => {
@@ -38,15 +35,13 @@ export default function ProfileScreen() {
     try {
       setLoading(true)
       setError(false)
-      const [userData, statsData, collectionsData] = await Promise.all([
+      const [userData, statsData] = await Promise.all([
         getCurrentUser().catch(() => null),
         getOverallStats().catch(() => null),
-        getCollections().catch(() => []),
       ])
 
       setUser(userData)
       setStats(statsData)
-      setCollections(collectionsData)
     } catch (error) {
       console.error('❌ ProfileScreen 데이터 로드 실패:', error)
       setError(true)
@@ -107,42 +102,34 @@ export default function ProfileScreen() {
   const implementedActions: Record<string, () => void> = {
     editProfile: () => navigation.navigate("EditProfile"),
     about: () => navigation.navigate("About"),
-    contactEmail: () => {
-      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 문의/피드백").catch(() =>
+    help: () => navigation.navigate("Help"),
+    contact: () => {
+      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 문의/버그 신고").catch(() =>
         Alert.alert("알림", "메일 앱을 열 수 없습니다.\nfilmory.app@gmail.com으로 문의해 주세요.")
       )
     },
-    bugReport: () => {
-      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 버그 신고").catch(() =>
-        Alert.alert("알림", "메일 앱을 열 수 없습니다.")
-      )
-    },
-    terms: () => Alert.alert("준비 중", "이용약관 페이지가 곧 준비될 예정입니다."),
-    privacy: () => Alert.alert("준비 중", "개인정보 처리방침 페이지가 곧 준비될 예정입니다."),
-    licenses: () => Alert.alert("준비 중", "오픈소스 라이선스 페이지가 곧 준비될 예정입니다."),
+    terms: () => navigation.navigate("Terms"),
+    privacy: () => navigation.navigate("Privacy"),
   }
 
   const settingsMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "person-outline", label: "프로필 수정", action: "editProfile" },
-    { icon: "notifications-outline", label: "알림 설정", action: "notifications" },
     { icon: "color-palette-outline", label: "테마 설정", action: "theme" },
     { icon: "cloud-upload-outline", label: "백업 및 복원", action: "backup" },
     { icon: "information-circle-outline", label: "앱 정보", action: "about" },
   ]
 
-  const supportMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
+  const supportMenu: Array<{ icon: IoniconName; label: string; action: string; subtitle?: string }> = [
     { icon: "help-circle-outline", label: "도움말", action: "help" },
-    { icon: "mail-outline", label: "이메일 문의", action: "contactEmail" },
-    { icon: "bug-outline", label: "버그 신고", action: "bugReport" },
+    { icon: "mail-outline", label: "사용 문의 및 버그 신고", action: "contact", subtitle: "filmory.app@gmail.com" },
   ]
 
-  const legalMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
+  const etcMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "document-text-outline", label: "이용약관", action: "terms" },
     { icon: "shield-checkmark-outline", label: "개인정보 처리방침", action: "privacy" },
-    { icon: "code-slash-outline", label: "오픈소스 라이선스", action: "licenses" },
   ]
 
-  const renderMenuGroup = (items: Array<{ icon: IoniconName; label: string; action: string }>) => (
+  const renderMenuGroup = (items: Array<{ icon: IoniconName; label: string; action: string; subtitle?: string }>) => (
     <>
       {items.map((item, index) => {
         const isImplemented = !!implementedActions[item.action]
@@ -160,7 +147,10 @@ export default function ProfileScreen() {
           >
             <View style={styles.menuItemLeft}>
               <Ionicons name={item.icon} size={24} color={COLORS.gold} />
-              <Text style={styles.menuItemText}>{item.label}{!isImplemented ? " (준비 중)" : ""}</Text>
+              <View>
+                <Text style={styles.menuItemText}>{item.label}{!isImplemented ? " (준비 중)" : ""}</Text>
+                {item.subtitle && <Text style={styles.menuItemSubtext}>{item.subtitle}</Text>}
+              </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
           </TouchableOpacity>
@@ -198,57 +188,18 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{collections.length || 0}</Text>
-            <Text style={styles.statLabel}>컬렉션</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats?.current_streak || 0}</Text>
             <Text style={styles.statLabel}>연속 기록</Text>
           </View>
-        </View>
-      </View>
-
-      {/* Divider: Profile Card ~ Collections */}
-      <View style={styles.sectionDivider} />
-
-      {/* Collections Section */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleRow}>
-            <Ionicons name="sparkles" size={20} color={COLORS.gold} />
-            <Text style={styles.sectionTitle}>컬렉션</Text>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{(stats?.average_rating || 0).toFixed(1)}</Text>
+            <Text style={styles.statLabel}>평균 별점</Text>
           </View>
         </View>
-
-        <View style={styles.collectionList}>
-          {collections.length > 0 ? (
-            collections.map((collection) => (
-                <TouchableOpacity
-                  key={collection.id}
-                  style={styles.collectionItem}
-                  onPress={() => navigation.navigate("CollectionDetail", { id: collection.id })}
-                >
-                  <View style={styles.collectionLeft}>
-                    <Ionicons name="sparkles" size={20} color={COLORS.gold} />
-                    <View style={styles.collectionInfo}>
-                      <Text style={styles.collectionName}>{collection.name}</Text>
-                      <Text style={styles.collectionCount}>{collection.movie_count}편</Text>
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
-                </TouchableOpacity>
-              ))
-          ) : (
-            <View style={styles.emptyCollections}>
-              <Ionicons name="sparkles" size={40} color={COLORS.lightGray} />
-              <Text style={styles.emptyText}>영화를 기록하면 자동으로 컬렉션이 생성됩니다</Text>
-            </View>
-          )}
-        </View>
       </View>
 
-      {/* Divider: Collections ~ Menu */}
+      {/* Divider */}
       <View style={styles.sectionDivider} />
 
       {/* 설정 */}
@@ -279,15 +230,15 @@ export default function ProfileScreen() {
       {/* Divider */}
       <View style={styles.sectionDivider} />
 
-      {/* 법적 정보 */}
+      {/* 기타 설정 */}
       <View style={styles.menuSection}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
-            <Ionicons name="document-outline" size={20} color={COLORS.gold} />
-            <Text style={styles.sectionTitle}>법적 정보</Text>
+            <Ionicons name="ellipsis-horizontal-circle-outline" size={20} color={COLORS.gold} />
+            <Text style={styles.sectionTitle}>기타 설정</Text>
           </View>
         </View>
-        {renderMenuGroup(legalMenu)}
+        {renderMenuGroup(etcMenu)}
       </View>
 
       {/* Logout Button */}
@@ -378,10 +329,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 24,
   },
-  section: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-  },
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -397,36 +344,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
     color: COLORS.white,
-  },
-  collectionList: {
-    gap: 8,
-  },
-  collectionItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    padding: 16,
-    borderRadius: 12,
-  },
-  collectionLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flex: 1,
-  },
-  collectionInfo: {
-    flex: 1,
-  },
-  collectionName: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: COLORS.white,
-    marginBottom: 2,
-  },
-  collectionCount: {
-    fontSize: 13,
-    color: COLORS.lightGray,
   },
   menuSection: {
     marginHorizontal: 20,
@@ -451,6 +368,11 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: "500",
   },
+  menuItemSubtext: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    marginTop: 2,
+  },
   logoutButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -469,16 +391,5 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 100,
-  },
-  emptyCollections: {
-    alignItems: "center",
-    padding: 40,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-    marginTop: 12,
   },
 })

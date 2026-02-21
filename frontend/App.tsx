@@ -18,9 +18,13 @@ import StatsScreen from "./src/screens/StatsScreen"
 import ProfileScreen from "./src/screens/ProfileScreen"
 import MovieDetailScreen from "./src/screens/MovieDetailScreen"
 import MovieSearchScreen from "./src/screens/MovieSearchScreen"
+import CollectionsScreen from "./src/screens/CollectionsScreen"
 import CollectionDetailScreen from "./src/screens/CollectionDetailScreen"
 import EditProfileScreen from "./src/screens/EditProfileScreen"
 import AboutScreen from "./src/screens/AboutScreen"
+import HelpScreen from "./src/screens/HelpScreen"
+import TermsScreen from "./src/screens/TermsScreen"
+import PrivacyScreen from "./src/screens/PrivacyScreen"
 
 import type { RootStackParamList, TabParamList } from "./src/types"
 import { COLORS } from "./src/constants/colors"
@@ -119,6 +123,11 @@ function MainStack() {
         }}
       />
       <Stack.Screen
+        name="Collections"
+        component={CollectionsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="CollectionDetail"
         component={CollectionDetailScreen}
         options={{
@@ -133,6 +142,21 @@ function MainStack() {
       <Stack.Screen
         name="About"
         component={AboutScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Terms"
+        component={TermsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Privacy"
+        component={PrivacyScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

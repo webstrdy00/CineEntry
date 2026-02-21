@@ -50,6 +50,32 @@ async def get_user_collections(
         .all()
     )
 
+    # 각 컬렉션별 상위 3개 포스터 URL 조회
+    collection_ids = [c.id for c, _ in collections]
+    preview_map: dict[int, list[str]] = {}
+
+    if collection_ids:
+        preview_query = (
+            db.query(
+                CollectionMovie.collection_id,
+                Movie.poster_url,
+            )
+            .join(UserMovie, CollectionMovie.user_movie_id == UserMovie.id)
+            .join(Movie, UserMovie.movie_id == Movie.id)
+            .filter(
+                CollectionMovie.collection_id.in_(collection_ids),
+                Movie.poster_url.isnot(None),
+            )
+            .order_by(CollectionMovie.collection_id, CollectionMovie.id.desc())
+            .all()
+        )
+
+        for cid, poster_url in preview_query:
+            if cid not in preview_map:
+                preview_map[cid] = []
+            if len(preview_map[cid]) < 3:
+                preview_map[cid].append(poster_url)
+
     result = []
     for collection, movie_count in collections:
         collection_dict = CollectionResponse(
@@ -61,6 +87,7 @@ async def get_user_collections(
             auto_rules=collection.auto_rules,
             user_id=collection.user_id,
             movie_count=movie_count,
+            preview_posters=preview_map.get(collection.id, []),
             created_at=collection.created_at,
             updated_at=collection.updated_at,
         )

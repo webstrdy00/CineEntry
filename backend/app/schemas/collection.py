@@ -38,6 +38,7 @@ class CollectionResponse(CollectionBase):
     id: int
     user_id: UUID
     movie_count: int  # 영화 개수 (JOIN으로 계산)
+    preview_posters: List[str] = []  # 최대 3개 포스터 URL (홈 화면 미리보기용)
     created_at: datetime
     updated_at: datetime
 

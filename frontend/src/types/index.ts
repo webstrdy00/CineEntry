@@ -119,9 +119,13 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<TabParamList> | undefined
   MovieDetail: { id: number }
   MovieSearch: undefined
+  Collections: undefined
   CollectionDetail: { id: number }
   EditProfile: undefined
   About: undefined
+  Help: undefined
+  Terms: undefined
+  Privacy: undefined
 }
 
 export type TabParamList = {

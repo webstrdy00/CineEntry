@@ -36,6 +36,7 @@ export interface Collection {
   is_auto: boolean;
   auto_rules?: AutoCollectionRules;
   movie_count: number;
+  preview_posters: string[];
   created_at: string;
   updated_at: string;
 }

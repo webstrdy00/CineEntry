@@ -9,9 +9,10 @@ import { COLORS } from "../constants/colors"
 import MovieCard from "../components/MovieCard"
 import StatCard from "../components/StatCard"
 import type { RootStackParamList } from "../types"
-import { getOverallStats, getBestMovies } from "../services/statsService"
+import { getOverallStats } from "../services/statsService"
 import { getMovies } from "../services/movieService"
 import { updateUserProfile } from "../services/userService"
+import { getCollections } from "../services/collectionService"
 
 const { width } = Dimensions.get("window")
 
@@ -37,7 +38,7 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<any>(defaultStats)
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
-  const [bestMoviesList, setBestMoviesList] = useState<any[]>([])
+  const [collections, setCollections] = useState<any[]>([])
   const [isEditingGoal, setIsEditingGoal] = useState(false)
   const [isSavingGoal, setIsSavingGoal] = useState(false)
 
@@ -66,7 +67,7 @@ export default function HomeScreen() {
       console.log('📡 HomeScreen: API 호출 시작')
 
       // API 호출
-      const [statsData, watchingData, watchlistData, bestMoviesData] = await Promise.all([
+      const [statsData, watchingData, watchlistData, collectionsData] = await Promise.all([
         getOverallStats(currentYear).catch((err) => {
           console.error('❌ getOverallStats 실패:', err.message)
           return null
@@ -79,23 +80,18 @@ export default function HomeScreen() {
           console.error('❌ getMovies(watchlist) 실패:', err.message)
           return []
         }),
-        getBestMovies(10).catch((err) => {
-          console.error('❌ getBestMovies 실패:', err.message)
+        getCollections().catch((err) => {
+          console.error('❌ getCollections 실패:', err.message)
           return []
         }),
       ])
 
-      console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, bestMoviesData })
+      console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, collectionsData })
 
       setStats(statsData || defaultStats)
       setWatchingMovies(watchingData)
       setWatchlistMovies(watchlistData)
-      setBestMoviesList(
-        (bestMoviesData || []).map((movie: any) => ({
-          ...movie,
-          poster: movie.poster ?? movie.poster_url ?? "",
-        }))
-      )
+      setCollections(collectionsData)
     } catch (error: any) {
       console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
       setError(true)
@@ -288,42 +284,13 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Best Movies Section */}
-      {bestMoviesList.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Text style={styles.sectionTitle}>인생 영화</Text>
-              <Ionicons name="star" size={20} color={COLORS.gold} style={{ marginLeft: 6 }} />
-            </View>
-            <TouchableOpacity
-              onPress={() =>
-                navigation.navigate("Main", {
-                  screen: "Movies",
-                  params: { initialFilter: "completed" },
-                })
-              }
-            >
-              <Text style={styles.seeAllText}>더 보기</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.movieList}>
-            {bestMoviesList.map((movie) => (
-              <MovieCard
-                key={movie.id}
-                movie={{ ...movie, status: "completed" as const }}
-                onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
-                showRating={true}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
         {/* Watchlist Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>보고 싶은 영화</Text>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="bookmark" size={20} color={COLORS.gold} style={{ marginRight: 6 }} />
+              <Text style={styles.sectionTitle}>보고 싶은 영화</Text>
+            </View>
             {watchlistMovies.length > 0 && (
               <TouchableOpacity
                 onPress={() =>
@@ -355,6 +322,52 @@ export default function HomeScreen() {
               <TouchableOpacity onPress={() => navigation.navigate("MovieSearch")}>
                 <Text style={styles.emptyLink}>영화 추가하기</Text>
               </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Collections Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="sparkles" size={20} color={COLORS.gold} style={{ marginRight: 6 }} />
+              <Text style={styles.sectionTitle}>컬렉션</Text>
+            </View>
+            {collections.length > 0 && (
+              <TouchableOpacity onPress={() => navigation.navigate("Collections")}>
+                <Text style={styles.seeAllText}>더 보기</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {collections.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionScrollList}>
+              {collections.map((collection) => (
+                <TouchableOpacity
+                  key={collection.id}
+                  style={styles.collectionCard}
+                  activeOpacity={0.8}
+                  onPress={() => navigation.navigate("CollectionDetail", { id: collection.id })}
+                >
+                  <View style={styles.collectionPosterRow}>
+                    {(collection.preview_posters?.length > 0) ? (
+                      collection.preview_posters.slice(0, 3).map((url: string, idx: number) => (
+                        <Image key={idx} source={{ uri: url }} style={styles.collectionPoster} />
+                      ))
+                    ) : (
+                      <View style={styles.collectionEmptyPoster}>
+                        <Ionicons name="sparkles" size={28} color={COLORS.lightGray} />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.collectionCardName} numberOfLines={1}>{collection.name}</Text>
+                  <Text style={styles.collectionCardCount}>{collection.movie_count}편</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={styles.watchlistEmptyCard}>
+              <Ionicons name="sparkles" size={36} color={COLORS.lightGray} />
+              <Text style={styles.emptyText}>영화를 기록하면 자동으로 컬렉션이 생성됩니다</Text>
             </View>
           )}
         </View>
@@ -600,4 +613,46 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", paddingHorizontal: 8,
   },
   goalStepperValueText: { color: COLORS.gold, fontSize: 18, fontWeight: "800" },
+  collectionScrollList: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  collectionCard: {
+    width: 160,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    padding: 12,
+  },
+  collectionPosterRow: {
+    flexDirection: "row",
+    height: 90,
+    gap: 4,
+    marginBottom: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  collectionPoster: {
+    flex: 1,
+    height: 90,
+    borderRadius: 6,
+    backgroundColor: COLORS.darkNavy,
+  },
+  collectionEmptyPoster: {
+    flex: 1,
+    height: 90,
+    borderRadius: 6,
+    backgroundColor: COLORS.darkNavy,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  collectionCardName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.white,
+    marginBottom: 2,
+  },
+  collectionCardCount: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+  },
 })
