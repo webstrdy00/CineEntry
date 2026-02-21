@@ -134,6 +134,7 @@ export default function ProfileScreen() {
         />
         <Text style={styles.userName}>{user?.display_name || authUser?.display_name || "영화 애호가"}</Text>
         <Text style={styles.userEmail}>{user?.email || authUser?.email || "movie@lover.com"}</Text>
+        <View style={styles.cardDivider} />
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{stats?.total_watched || 0}</Text>
@@ -151,6 +152,9 @@ export default function ProfileScreen() {
           </View>
         </View>
       </View>
+
+      {/* Divider: Profile Card ~ Collections */}
+      <View style={styles.sectionDivider} />
 
       {/* Collections Section */}
       <View style={styles.section}>
@@ -192,17 +196,26 @@ export default function ProfileScreen() {
               <Text style={styles.emptyText}>아직 컬렉션이 없습니다</Text>
             </View>
           )}
-
-          {/* Add New Collection Button */}
-          <TouchableOpacity style={styles.addCollectionButton} onPress={() => Alert.alert("준비 중", "컬렉션 생성 기능이 곧 추가될 예정입니다.")}>
-            <Ionicons name="add-circle-outline" size={20} color={COLORS.gold} />
-            <Text style={styles.addCollectionText}>새 컬렉션 만들기</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Add New Collection Button - separated from list */}
+        <TouchableOpacity style={styles.addCollectionButton} onPress={() => Alert.alert("준비 중", "컬렉션 생성 기능이 곧 추가될 예정입니다.")}>
+          <Ionicons name="add-circle-outline" size={20} color={COLORS.gold} />
+          <Text style={styles.addCollectionText}>새 컬렉션 만들기</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Divider: Collections ~ Menu */}
+      <View style={styles.sectionDivider} />
 
       {/* Menu Items */}
       <View style={styles.menuSection}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="settings-outline" size={20} color={COLORS.gold} />
+            <Text style={styles.sectionTitle}>설정</Text>
+          </View>
+        </View>
         {menuItems.map((item, index) => (
           <TouchableOpacity key={index} style={[styles.menuItem, { opacity: 0.5 }]} onPress={() => Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")}>
             <View style={styles.menuItemLeft}>
@@ -264,15 +277,21 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 14,
     color: COLORS.lightGray,
-    marginBottom: 20,
+  },
+  cardDivider: {
+    width: "100%",
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.15)",
+    marginTop: 20,
   },
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
-    justifyContent: "space-around",
+    paddingTop: 16,
   },
   statItem: {
+    flex: 1,
     alignItems: "center",
   },
   statValue: {
@@ -289,6 +308,12 @@ const styles = StyleSheet.create({
     width: 1,
     height: 30,
     backgroundColor: COLORS.darkNavy,
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.1)",
+    marginHorizontal: 20,
+    marginBottom: 24,
   },
   section: {
     marginHorizontal: 20,
@@ -351,6 +376,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.gold,
     borderStyle: "dashed",
     gap: 8,
+    marginTop: 12,
   },
   addCollectionText: {
     fontSize: 15,
@@ -397,7 +423,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   bottomPadding: {
-    height: 40,
+    height: 100,
   },
   emptyCollections: {
     alignItems: "center",

@@ -70,6 +70,7 @@ class UserMovieUpdate(BaseModel):
     watch_date: Optional[date] = None
     progress: Optional[int] = None
     is_best_movie: Optional[bool] = None
+    genre: Optional[str] = None  # Movie 테이블 업데이트용
 
 
 class UserMovieResponse(UserMovieBase):

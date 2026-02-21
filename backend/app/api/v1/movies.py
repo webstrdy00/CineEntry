@@ -337,6 +337,12 @@ async def update_movie(
     if next_status == "completed" and "watch_date" not in update_dict and user_movie.watch_date is None:
         update_dict["watch_date"] = date.today()
 
+    # genre는 Movie 테이블에 저장
+    if "genre" in update_dict:
+        movie = db.query(Movie).filter(Movie.id == user_movie.movie_id).first()
+        if movie:
+            movie.genre = update_dict.pop("genre")
+
     for field, value in update_dict.items():
         setattr(user_movie, field, value)
 

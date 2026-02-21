@@ -21,6 +21,7 @@ export interface UserMovieUpdate {
   watch_date?: string;
   progress?: number;
   is_best_movie?: boolean;
+  genre?: string;
 }
 
 export interface MovieSearchParams {

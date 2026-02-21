@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl, Alert } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
@@ -11,6 +11,7 @@ import StatCard from "../components/StatCard"
 import type { RootStackParamList } from "../types"
 import { getOverallStats, getBestMovies } from "../services/statsService"
 import { getMovies } from "../services/movieService"
+import { updateUserProfile } from "../services/userService"
 
 const { width } = Dimensions.get("window")
 
@@ -37,6 +38,25 @@ export default function HomeScreen() {
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
   const [bestMoviesList, setBestMoviesList] = useState<any[]>([])
+  const [isEditingGoal, setIsEditingGoal] = useState(false)
+  const [isSavingGoal, setIsSavingGoal] = useState(false)
+
+  const handleGoalStep = async (delta: number) => {
+    const currentGoal = stats.yearly_goal || 100
+    const nextGoal = Math.max(10, Math.min(9999, currentGoal + delta))
+    if (nextGoal === currentGoal) return
+    setStats((prev: any) => ({ ...prev, yearly_goal: nextGoal }))
+    try {
+      setIsSavingGoal(true)
+      await updateUserProfile({ yearly_goal: nextGoal })
+    } catch (error) {
+      console.error("연간 목표 저장 실패:", error)
+      setStats((prev: any) => ({ ...prev, yearly_goal: currentGoal }))
+      Alert.alert("오류", "목표 저장에 실패했습니다.")
+    } finally {
+      setIsSavingGoal(false)
+    }
+  }
 
   const loadData = useCallback(async () => {
     try {
@@ -208,10 +228,11 @@ export default function HomeScreen() {
       )}
 
       {/* Yearly Goal Card */}
-      <View style={styles.goalCard}>
+      <TouchableOpacity style={styles.goalCard} activeOpacity={0.8} onPress={() => setIsEditingGoal(!isEditingGoal)}>
         <View style={styles.goalHeader}>
           <Ionicons name="trophy-outline" size={24} color={COLORS.gold} />
           <Text style={styles.goalTitle}>{currentYear}년 연간 목표</Text>
+          <Ionicons name={isEditingGoal ? "chevron-up" : "create-outline"} size={16} color={COLORS.lightGray} style={{ marginLeft: "auto" }} />
         </View>
         <View style={styles.goalContent}>
           <Text style={styles.goalNumbers}>
@@ -224,7 +245,26 @@ export default function HomeScreen() {
           </View>
           <Text style={styles.goalPercentage}>{yearlyProgress.toFixed(0)}% 달성</Text>
         </View>
-      </View>
+        {isEditingGoal && (
+          <View style={styles.goalStepperRow}>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-10)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>-10</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-1)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>-1</Text>
+            </TouchableOpacity>
+            <View style={styles.goalStepperValue}>
+              <Text style={styles.goalStepperValueText}>{yearlyGoal.target}</Text>
+            </View>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(1)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>+1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(10)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>+10</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {/* Stats Section */}
       <View style={styles.statsSection}>
@@ -330,6 +370,7 @@ export default function HomeScreen() {
       >
         <Ionicons name="add" size={28} color={COLORS.white} />
       </TouchableOpacity>
+
     </View>
   )
 }
@@ -545,4 +586,18 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
+  goalStepperRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", gap: 8,
+  },
+  goalStepperButton: {
+    width: 44, height: 36, borderRadius: 10, backgroundColor: COLORS.darkNavy,
+    alignItems: "center", justifyContent: "center",
+  },
+  goalStepperButtonText: { color: COLORS.gold, fontSize: 14, fontWeight: "700" },
+  goalStepperValue: {
+    minWidth: 56, height: 36, borderRadius: 10, backgroundColor: "rgba(212,175,55,0.15)",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 8,
+  },
+  goalStepperValueText: { color: COLORS.gold, fontSize: 18, fontWeight: "800" },
 })

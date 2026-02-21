@@ -18,7 +18,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 import { getMovieDetail, updateMovie, deleteMovie } from "../services/movieService"
-import { getTags, addTagToMovie, removeTagFromMovie } from "../services/tagService"
+import { getTags, createTag, addTagToMovie, removeTagFromMovie } from "../services/tagService"
 
 type MovieDetailScreenProps = NativeStackScreenProps<RootStackParamList, "MovieDetail">
 type MovieStatus = "watching" | "completed" | "watchlist"
@@ -49,7 +49,12 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
   const [allTags, setAllTags] = useState<any[]>([])
   const [movieTags, setMovieTags] = useState<any[]>([])
 
+  const [genreList, setGenreList] = useState<string[]>([])
+  const [showGenrePicker, setShowGenrePicker] = useState(false)
+  const [customGenreInput, setCustomGenreInput] = useState("")
+
   const [showTagPicker, setShowTagPicker] = useState(false)
+  const [newTagInput, setNewTagInput] = useState("")
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [showStartDateModal, setShowStartDateModal] = useState(false)
   const [showCompleteModal, setShowCompleteModal] = useState(false)
@@ -74,6 +79,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setRating(movieData.rating || 0)
       setReview(movieData.review || "")
       setStatus(movieData.status || "watchlist")
+      setGenreList(movieData.genre ? movieData.genre.split(",").map((g: string) => g.trim()).filter(Boolean) : [])
       setMovieTags(currentTags)
       setAllTags(tagsData)
     } catch (error) {
@@ -215,6 +221,79 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     if (status !== "completed") return
     await persistStatus("completed", { rating, review, silent: true })
   }, [persistStatus, rating, review, status])
+
+  const GENRE_PRESETS = [
+    "드라마", "액션", "코미디", "스릴러", "로맨스", "SF", "호러",
+    "애니메이션", "다큐멘터리", "범죄", "판타지", "전쟁", "뮤지컬",
+    "가족", "미스터리", "어드벤처", "역사",
+  ] as const
+
+  const persistGenre = async (nextList: string[]) => {
+    const genreStr = nextList.join(", ")
+    try {
+      setIsSaving(true)
+      const updatedMovie = await updateMovie(id, { genre: genreStr || "" })
+      setMovie(updatedMovie)
+      setGenreList(updatedMovie.genre ? updatedMovie.genre.split(",").map((g: string) => g.trim()).filter(Boolean) : [])
+    } catch (error) {
+      console.error("장르 저장 실패:", error)
+      setGenreList(movie?.genre ? movie.genre.split(",").map((g: string) => g.trim()).filter(Boolean) : [])
+      Alert.alert("오류", "장르 저장에 실패했습니다.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleAddGenre = (g: string) => {
+    if (genreList.includes(g)) return
+    const nextList = [...genreList, g]
+    setGenreList(nextList)
+    setShowGenrePicker(false)
+    void persistGenre(nextList)
+  }
+
+  const handleRemoveGenre = (g: string) => {
+    const nextList = genreList.filter((item) => item !== g)
+    setGenreList(nextList)
+    void persistGenre(nextList)
+  }
+
+  const handleCustomGenreSubmit = () => {
+    const trimmed = customGenreInput.trim()
+    if (!trimmed || genreList.includes(trimmed)) {
+      setCustomGenreInput("")
+      return
+    }
+    setCustomGenreInput("")
+    handleAddGenre(trimmed)
+  }
+
+  const handleCreateTagAndAdd = async () => {
+    const name = newTagInput.trim()
+    if (!name) return
+    if (movieTags.some((t) => t.name === name) || allTags.some((t) => t.name === name)) {
+      const existing = allTags.find((t) => t.name === name)
+      if (existing && !movieTags.some((t) => t.id === existing.id)) {
+        void handleAddTag(existing.id)
+      }
+      setNewTagInput("")
+      return
+    }
+    try {
+      setIsSaving(true)
+      const newTag = await createTag({ name })
+      setAllTags((prev) => [...prev, newTag])
+      setNewTagInput("")
+      setMovieTags((prev) => [...prev, newTag])
+      setShowTagPicker(false)
+      await addTagToMovie(id, newTag.id)
+    } catch (error) {
+      console.error("태그 생성 실패:", error)
+      Alert.alert("오류", "태그 생성에 실패했습니다.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
 
   const WEEKDAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"] as const
   const MONTH_LABELS = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"] as const
@@ -438,6 +517,12 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
               <Ionicons name="calendar-outline" size={14} color={COLORS.lightGray} />
               <Text style={styles.infoText}>{releaseText}</Text>
             </View>
+            {genreList.length > 0 ? (
+              <View style={styles.infoRow}>
+                <Ionicons name="film-outline" size={14} color={COLORS.lightGray} />
+                <Text style={styles.infoText} numberOfLines={2}>{genreList.join(", ")}</Text>
+              </View>
+            ) : null}
           </View>
         </View>
       </LinearGradient>
@@ -447,6 +532,51 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>줄거리</Text>
           <Text style={styles.synopsis}>{synopsisText}</Text>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>장르</Text>
+          <View style={styles.tagsContainer}>
+            {genreList.map((g) => (
+              <TouchableOpacity key={g} style={styles.tag} onLongPress={() => void handleRemoveGenre(g)}>
+                <Text style={styles.tagText}>{g}</Text>
+                <TouchableOpacity onPress={() => void handleRemoveGenre(g)}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.gold} style={{ marginLeft: 4 }} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.addTagButton} onPress={() => setShowGenrePicker(!showGenrePicker)} disabled={isSaving}>
+              <Ionicons name="add" size={16} color={COLORS.gold} />
+              <Text style={styles.addTagText}>장르 추가</Text>
+            </TouchableOpacity>
+          </View>
+
+          {showGenrePicker && (
+            <View style={styles.tagPicker}>
+              <Text style={styles.tagPickerTitle}>장르 선택</Text>
+              <View style={styles.tagPickerList}>
+                {GENRE_PRESETS.filter((g) => !genreList.includes(g)).map((g) => (
+                  <TouchableOpacity key={g} style={styles.tagPickerItem} onPress={() => handleAddGenre(g)}>
+                    <Text style={styles.tagPickerText}>{g}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.customInputRow}>
+                <TextInput
+                  style={styles.customInput}
+                  value={customGenreInput}
+                  onChangeText={setCustomGenreInput}
+                  placeholder="직접 입력"
+                  placeholderTextColor={COLORS.lightGray}
+                  onSubmitEditing={handleCustomGenreSubmit}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity style={styles.customInputButton} onPress={handleCustomGenreSubmit} disabled={!customGenreInput.trim()}>
+                  <Ionicons name="add-circle" size={24} color={customGenreInput.trim() ? COLORS.gold : COLORS.lightGray} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -475,6 +605,20 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
                     <Text style={styles.tagPickerText}>{tag.name}</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+              <View style={styles.customInputRow}>
+                <TextInput
+                  style={styles.customInput}
+                  value={newTagInput}
+                  onChangeText={setNewTagInput}
+                  placeholder="새 태그 만들기"
+                  placeholderTextColor={COLORS.lightGray}
+                  onSubmitEditing={() => void handleCreateTagAndAdd()}
+                  returnKeyType="done"
+                />
+                <TouchableOpacity style={styles.customInputButton} onPress={() => void handleCreateTagAndAdd()} disabled={!newTagInput.trim() || isSaving}>
+                  <Ionicons name="add-circle" size={24} color={newTagInput.trim() ? COLORS.gold : COLORS.lightGray} />
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -729,6 +873,12 @@ const styles = StyleSheet.create({
   tagPickerList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tagPickerItem: { backgroundColor: COLORS.darkNavy, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
   tagPickerText: { color: COLORS.gold, fontSize: 13, fontWeight: "500" },
+  customInputRow: { flexDirection: "row", alignItems: "center", marginTop: 12, gap: 8 },
+  customInput: {
+    flex: 1, backgroundColor: COLORS.darkNavy, borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 12, paddingVertical: 8, color: COLORS.white, fontSize: 13,
+  },
+  customInputButton: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 
   statusSection: { marginBottom: 12 },
   startWatchingCard: {
