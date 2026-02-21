@@ -13,6 +13,7 @@ import {
   Modal,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
+import { LinearGradient } from "expo-linear-gradient"
 import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
@@ -415,16 +416,17 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.backdropContainer}>
-        <Image source={{ uri: movie.backdrop_url || movie.poster_url }} style={styles.backdrop} />
-        <View style={styles.backdropOverlay} />
-        <TouchableOpacity style={styles.menuButton} onPress={() => setShowActionMenu(true)}>
-          <Ionicons name="ellipsis-horizontal" size={22} color={COLORS.white} />
-        </TouchableOpacity>
-      </View>
+      <LinearGradient colors={["#3d4060", COLORS.darkNavy]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={styles.heroGradient}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuButton} onPress={() => setShowActionMenu(true)}>
+            <Ionicons name="ellipsis-horizontal" size={22} color={COLORS.white} />
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.content}>
-        <View style={styles.movieHeader}>
+        <View style={styles.heroContent}>
           <Image source={{ uri: movie.poster_url }} style={styles.poster} />
           <View style={styles.movieInfo}>
             <Text style={styles.title}>{movie.title}</Text>
@@ -438,13 +440,16 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
             </View>
           </View>
         </View>
+      </LinearGradient>
 
-        <View style={styles.section}>
+      <View style={styles.content}>
+
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>줄거리</Text>
           <Text style={styles.synopsis}>{synopsisText}</Text>
         </View>
 
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>태그</Text>
           <View style={styles.tagsContainer}>
             {movieTags.map((tag) => (
@@ -688,22 +693,31 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 }
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.darkNavy },
-  backdropContainer: { height: 250, position: "relative" },
-  backdrop: { width: "100%", height: "100%" },
-  backdropOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(26, 29, 41, 0.6)" },
-  menuButton: {
-    position: "absolute", top: 48, right: 16, width: 44, height: 44, borderRadius: 22,
-    backgroundColor: "rgba(0, 0, 0, 0.5)", justifyContent: "center", alignItems: "center",
+  headerBar: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingTop: 48, paddingHorizontal: 16, paddingBottom: 8,
   },
-  content: { marginTop: -50, paddingHorizontal: 20 },
-  movieHeader: { flexDirection: "row", marginBottom: 24 },
+  backButton: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: "center", alignItems: "center",
+  },
+  menuButton: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: "center", alignItems: "center",
+  },
+  heroGradient: { paddingBottom: 28, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, overflow: "hidden" },
+  heroContent: { flexDirection: "row", paddingHorizontal: 20 },
   poster: { width: 120, height: 180, borderRadius: 12, borderWidth: 3, borderColor: COLORS.gold },
   movieInfo: { flex: 1, marginLeft: 16, justifyContent: "center" },
   title: { fontSize: 22, fontWeight: "bold", color: COLORS.white, marginBottom: 10 },
   infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 6 },
   infoText: { fontSize: 14, color: COLORS.lightGray },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "bold", color: COLORS.white, marginBottom: 12 },
+  content: { paddingHorizontal: 16, paddingTop: 16 },
+  sectionCard: {
+    marginBottom: 20, paddingBottom: 20,
+    borderBottomWidth: 1, borderBottomColor: "rgba(255, 255, 255, 0.08)",
+  },
+  sectionTitle: { fontSize: 16, fontWeight: "700", color: COLORS.white, marginBottom: 10 },
   synopsis: { fontSize: 14, color: COLORS.lightGray, lineHeight: 22 },
   tagsContainer: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { flexDirection: "row", alignItems: "center", backgroundColor: COLORS.deepGray, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
@@ -716,7 +730,7 @@ const styles = StyleSheet.create({
   tagPickerItem: { backgroundColor: COLORS.darkNavy, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16 },
   tagPickerText: { color: COLORS.gold, fontSize: 13, fontWeight: "500" },
 
-  statusSection: { marginBottom: 24 },
+  statusSection: { marginBottom: 12 },
   startWatchingCard: {
     borderRadius: 18, backgroundColor: STATUS_CARD_THEME.surface, borderWidth: 1, borderColor: STATUS_CARD_THEME.border,
     paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between",

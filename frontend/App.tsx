@@ -107,7 +107,7 @@ function MainStack() {
       }}
     >
       <Stack.Screen name="Main" component={TabNavigator} options={{ headerShown: false }} />
-      <Stack.Screen name="MovieDetail" component={MovieDetailScreen} options={{ title: "영화 상세" }} />
+      <Stack.Screen name="MovieDetail" component={MovieDetailScreen} options={{ headerShown: false }} />
       <Stack.Screen
         name="MovieSearch"
         component={MovieSearchScreen}
