@@ -710,15 +710,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   searchActionButton: {
-    width: 28,
-    height: 28,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
   searchActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: 0,
   },
   emptyContainer: {
     flex: 1,
@@ -762,7 +762,7 @@ const styles = StyleSheet.create({
   },
   movieItemAdded: {
     borderColor: "rgba(212, 175, 55, 0.52)",
-    backgroundColor: "#34384a",
+    backgroundColor: COLORS.deepGray,
   },
   poster: {
     width: 60,

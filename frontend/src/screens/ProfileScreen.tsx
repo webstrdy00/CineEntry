@@ -194,7 +194,7 @@ export default function ProfileScreen() {
           )}
 
           {/* Add New Collection Button */}
-          <TouchableOpacity style={styles.addCollectionButton}>
+          <TouchableOpacity style={styles.addCollectionButton} onPress={() => Alert.alert("준비 중", "컬렉션 생성 기능이 곧 추가될 예정입니다.")}>
             <Ionicons name="add-circle-outline" size={20} color={COLORS.gold} />
             <Text style={styles.addCollectionText}>새 컬렉션 만들기</Text>
           </TouchableOpacity>
@@ -204,10 +204,10 @@ export default function ProfileScreen() {
       {/* Menu Items */}
       <View style={styles.menuSection}>
         {menuItems.map((item, index) => (
-          <TouchableOpacity key={index} style={styles.menuItem}>
+          <TouchableOpacity key={index} style={[styles.menuItem, { opacity: 0.5 }]} onPress={() => Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")}>
             <View style={styles.menuItemLeft}>
               <Ionicons name={item.icon} size={24} color={COLORS.gold} />
-              <Text style={styles.menuItemText}>{item.label}</Text>
+              <Text style={styles.menuItemText}>{item.label} (준비 중)</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
           </TouchableOpacity>

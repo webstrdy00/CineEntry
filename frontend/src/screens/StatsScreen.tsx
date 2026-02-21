@@ -9,7 +9,7 @@ import { getOverallStats, getMonthlyStats, getGenreStats, getTagStats } from "..
 
 const { width } = Dimensions.get("window")
 
-const GENRE_COLORS = [COLORS.gold, COLORS.red, "#3498db", "#2ecc71", "#9b59b6", "#e67e22"]
+const GENRE_COLORS = [COLORS.gold, COLORS.red, COLORS.chartBlue, COLORS.chartGreen, COLORS.chartPurple, COLORS.chartOrange]
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets()

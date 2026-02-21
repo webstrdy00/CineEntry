@@ -166,7 +166,7 @@ export default function HomeScreen() {
               >
                 <LinearGradient colors={[COLORS.deepGray, COLORS.darkNavy]} style={styles.currentMovieGradient}>
                   <View style={styles.currentMovieContent}>
-                    <Image source={{ uri: watchingMovie.poster }} style={styles.currentMoviePoster} />
+                    <Image source={{ uri: watchingMovie.poster_url || watchingMovie.poster }} style={styles.currentMoviePoster} />
                     <View style={styles.currentMovieInfo}>
                       <Text style={styles.currentMovieLabel}>보는 중</Text>
                       <Text style={styles.currentMovieTitle} numberOfLines={2}>

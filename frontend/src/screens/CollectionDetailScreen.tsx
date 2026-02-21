@@ -391,7 +391,10 @@ const styles = StyleSheet.create({
     left: 4,
     backgroundColor: "rgba(26, 29, 41, 0.9)",
     borderRadius: 12,
-    padding: 2,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addMovieButton: {
     flexDirection: "row",

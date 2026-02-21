@@ -73,7 +73,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="이메일"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -84,7 +84,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="비밀번호"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -104,7 +104,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
               <Text style={styles.buttonText}>로그인</Text>
             )}

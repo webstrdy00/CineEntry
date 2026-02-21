@@ -21,6 +21,20 @@ export const COLORS = {
   success: "#10b981",     // 성공 메시지
   warning: "#f59e0b",     // 경고 메시지
   info: "#3b82f6",        // 정보 메시지
+
+  // Status colors
+  watchingBlue: "#5DADE2",    // 보는 중 상태
+  completedGreen: "#58D68D",  // 완료 상태
+
+  // Calendar colors
+  sundayRed: "#E67A7A",      // 일요일
+  saturdayBlue: "#7AADE6",   // 토요일
+
+  // Chart colors
+  chartBlue: "#3498db",
+  chartGreen: "#2ecc71",
+  chartPurple: "#9b59b6",
+  chartOrange: "#e67e22",
 } as const
 
 export type ColorKey = keyof typeof COLORS

@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#3a3d4f",
+    borderColor: COLORS.deepGray,
   },
   movieInfo: {
     flex: 1,
@@ -369,10 +369,10 @@ const styles = StyleSheet.create({
     color: COLORS.gold,
   },
   statusChipTextWatching: {
-    color: "#5DADE2",
+    color: COLORS.watchingBlue,
   },
   statusChipTextCompleted: {
-    color: "#58D68D",
+    color: COLORS.completedGreen,
   },
   ratingRow: {
     flexDirection: "row",

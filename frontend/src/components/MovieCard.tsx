@@ -22,7 +22,7 @@ export default function MovieCard({
     >
       {/* 포스터 이미지 */}
       <Image
-        source={{ uri: movie.poster }}
+        source={{ uri: movie.poster_url || movie.poster }}
         style={styles.poster}
         resizeMode="cover"
       />

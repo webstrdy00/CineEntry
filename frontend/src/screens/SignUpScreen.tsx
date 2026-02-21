@@ -93,7 +93,7 @@ const SignUpScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="이메일"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -104,7 +104,7 @@ const SignUpScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="이름 (닉네임)"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={displayName}
             onChangeText={setDisplayName}
             editable={!loading}
@@ -113,7 +113,7 @@ const SignUpScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="비밀번호 (최소 6자)"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -123,7 +123,7 @@ const SignUpScreen = ({ navigation }: any) => {
           <TextInput
             style={styles.input}
             placeholder="비밀번호 확인"
-            placeholderTextColor="#999"
+            placeholderTextColor={COLORS.lightGray}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -136,7 +136,7 @@ const SignUpScreen = ({ navigation }: any) => {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
               <Text style={styles.buttonText}>회원가입</Text>
             )}
