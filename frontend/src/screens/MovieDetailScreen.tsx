@@ -700,40 +700,42 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
         {status === "watching" && (
           <View style={styles.statusSection}>
-            <View style={styles.statusSplitRow}>
-              <TouchableOpacity style={[styles.statusInfoCard, styles.statusInfoCardPrimary]} onPress={openProgressModal} disabled={isSaving}>
-                <Text style={styles.statusInfoLabel}>시청 진행</Text>
-                <View style={styles.progressMainRow}>
-                  <Text style={styles.progressMainText}>{watchingProgressMinutes}</Text>
-                  <Text style={styles.progressMainSubText}>분 / {watchingRuntimeMinutes}분</Text>
+            <View style={styles.timelineCard}>
+              {/* 세로 연결선 — 첫 번째 노드 중심부터 마지막 노드 중심까지 */}
+              <View style={styles.timelineLine} />
+
+              {/* 상단 노드: 시청 시작 + 날짜 */}
+              <TouchableOpacity style={styles.timelineRow} onPress={() => openStartDateModal(movie.watch_date)} disabled={isSaving}>
+                <View style={styles.timelineNodeColumn}>
+                  <View style={styles.timelineNodeFilled} />
                 </View>
-                <View style={styles.progressBarTrack}><View style={[styles.progressBarFill, { width: `${watchingProgressPercent}%` }]} /></View>
-                <Text style={styles.progressHint}>{watchingProgressLabel} · 탭하여 수정</Text>
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineNodeLabel}>시청 시작</Text>
+                  <Text style={styles.timelineNodeDate}>{movie.watch_date ? formatKoreanDate(movie.watch_date) : "-"}</Text>
+                </View>
               </TouchableOpacity>
 
-              <View style={[styles.statusInfoCard, styles.statusInfoCardSecondary]}>
-                <Text style={styles.statusInfoLabel}>시작일</Text>
-                <Text style={styles.statusDateText}>{movie.watch_date ? formatKoreanDate(movie.watch_date) : "-"}</Text>
-                <Text style={styles.statusDaysText}>{daysElapsed ?? 1}일째</Text>
-              </View>
-            </View>
-
-            <View style={styles.statusActionRow}>
-              <TouchableOpacity
-                style={[styles.statusActionButton, styles.statusActionButtonSecondary, isSaving && styles.disabledButton]}
-                onPress={() => openStartDateModal(movie.watch_date)}
-                disabled={isSaving}
-              >
-                <Ionicons name="calendar-outline" size={18} color={STATUS_CARD_THEME.secondaryText} />
-                <Text style={styles.statusActionButtonTextSecondary}>시청 시작일 변경</Text>
+              {/* 중간 영역: 프로그레스 */}
+              <TouchableOpacity style={styles.timelineRow} onPress={openProgressModal} disabled={isSaving}>
+                <View style={styles.timelineNodeColumn} />
+                <View style={styles.timelineProgressContent}>
+                  <View style={styles.timelineProgressBarTrack}>
+                    <View style={[styles.timelineProgressBarFill, { width: `${watchingProgressPercent}%` }]} />
+                  </View>
+                  <Text style={styles.timelineProgressLabel}>{watchingProgressLabel}</Text>
+                  <Text style={styles.timelineDaysLabel}>{daysElapsed ?? 1}일째 시청 중</Text>
+                </View>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.statusActionButton, styles.statusActionButtonPrimary, isSaving && styles.disabledButton]}
-                onPress={openCompleteModal}
-                disabled={isSaving}
-              >
-                <Ionicons name="checkmark-done" size={18} color={COLORS.darkNavy} />
-                <Text style={styles.statusActionButtonTextPrimary}>시청 완료</Text>
+
+              {/* 하단 노드: 시청 완료 */}
+              <TouchableOpacity style={styles.timelineCompleteRow} onPress={openCompleteModal} disabled={isSaving}>
+                <View style={styles.timelineNodeColumn}>
+                  <View style={styles.timelineNodeEmpty} />
+                </View>
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineNodeLabel}>시청 완료</Text>
+                </View>
+                <Text style={styles.timelineCompleteAction}>완료 기록하기 →</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -741,20 +743,22 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
         {status === "completed" && (
           <View style={styles.statusSection}>
-            <View style={styles.statusSplitRow}>
-              <TouchableOpacity style={[styles.statusInfoCard, styles.rewatchCard, isSaving && styles.disabledButton]} onPress={() => openStartDateModal()} disabled={isSaving}>
-                <Text style={styles.statusInfoLabel}>다시 보기</Text>
-                <Text style={styles.rewatchCardTitle}>다시 시청하기</Text>
-                <View style={styles.rewatchCardPlayCircle}><Ionicons name="play" size={24} color={COLORS.darkNavy} /></View>
-              </TouchableOpacity>
-
-              <View style={[styles.statusInfoCard, styles.completedSummaryCard]}>
+            <View style={styles.completedCard}>
+              {/* 상단: 완료 배지 + 날짜 */}
+              <View style={styles.completedHeader}>
+                <View style={styles.completedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color={COLORS.gold} />
+                  <Text style={styles.completedBadgeText}>시청 완료</Text>
+                </View>
                 {movie.watch_date && <Text style={styles.completedDateText}>{formatKoreanDate(movie.watch_date)}</Text>}
+              </View>
 
+              {/* 별점 */}
+              <View style={styles.ratingSection}>
                 <View style={styles.ratingContainer}>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <View key={star} style={styles.starButton}>
-                      <Ionicons name={getStarIconName(rating, star)} size={28} color={COLORS.gold} />
+                      <Ionicons name={getStarIconName(rating, star)} size={32} color={COLORS.gold} />
                       <View style={styles.starTouchOverlay}>
                         <TouchableOpacity style={styles.starHalfLeft} onPress={() => void handleRatingChange(star - 0.5)} />
                         <TouchableOpacity style={styles.starHalfRight} onPress={() => void handleRatingChange(star)} />
@@ -763,9 +767,16 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
                   ))}
                 </View>
                 <Text style={styles.ratingValue}>{rating.toFixed(1)}점</Text>
-
-                <TextInput style={styles.reviewInput} placeholder="감상평을 입력해 주세요" placeholderTextColor={COLORS.lightGray} multiline numberOfLines={4} value={review} onChangeText={setReview} onBlur={() => void handleCompletedReviewBlur()} editable={!isSaving} />
               </View>
+
+              {/* 감상평 */}
+              <TextInput style={styles.reviewInput} placeholder="감상평을 입력해 주세요" placeholderTextColor={COLORS.lightGray} multiline numberOfLines={4} value={review} onChangeText={setReview} onBlur={() => void handleCompletedReviewBlur()} editable={!isSaving} />
+
+              {/* 다시 시청하기 */}
+              <TouchableOpacity style={[styles.rewatchButton, isSaving && styles.disabledButton]} onPress={() => openStartDateModal()} disabled={isSaving}>
+                <Ionicons name="refresh-outline" size={16} color={COLORS.gold} />
+                <Text style={styles.rewatchButtonText}>다시 시청하기</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -1001,37 +1012,62 @@ const styles = StyleSheet.create({
   startWatchingCardTitle: { color: STATUS_CARD_THEME.primaryText, fontSize: 19, fontWeight: "700" },
   startWatchingCardDescription: { color: STATUS_CARD_THEME.secondaryText, fontSize: 13, marginTop: 6, lineHeight: 19 },
   startWatchingCardIconCircle: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center" },
-  statusSplitRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
-  statusInfoCard: { flex: 1, borderRadius: 18, borderWidth: 1, borderColor: STATUS_CARD_THEME.border, paddingHorizontal: 14, paddingVertical: 14 },
-  statusInfoCardPrimary: { backgroundColor: STATUS_CARD_THEME.surface, justifyContent: "center" },
-  statusInfoCardSecondary: { backgroundColor: STATUS_CARD_THEME.surfaceAlt, justifyContent: "space-between" },
-  statusInfoLabel: { color: STATUS_CARD_THEME.secondaryText, fontSize: 12, fontWeight: "700" },
-  progressMainRow: { flexDirection: "row", alignItems: "flex-end", marginTop: 6 },
-  progressMainText: { color: STATUS_CARD_THEME.primaryText, fontSize: 34, fontWeight: "800", lineHeight: 38 },
-  progressMainSubText: { color: STATUS_CARD_THEME.secondaryText, fontSize: 13, fontWeight: "600", marginLeft: 5, marginBottom: 5 },
-  progressBarTrack: { marginTop: 10, height: 7, borderRadius: 4, backgroundColor: STATUS_CARD_THEME.progressTrack, overflow: "hidden" },
-  progressBarFill: { height: "100%", backgroundColor: COLORS.gold },
-  progressHint: { marginTop: 7, color: STATUS_CARD_THEME.mutedText, fontSize: 12, fontWeight: "600" },
-  statusDateText: { marginTop: 8, color: STATUS_CARD_THEME.secondaryText, fontSize: 14, fontWeight: "600" },
-  statusDaysText: { color: STATUS_CARD_THEME.primaryText, fontSize: 34, fontWeight: "800", lineHeight: 38, marginTop: 10 },
-  statusActionRow: { flexDirection: "row", gap: 10, marginTop: 12 },
-  statusActionButton: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 8 },
-  statusActionButtonSecondary: { backgroundColor: STATUS_CARD_THEME.surfaceAlt, borderColor: STATUS_CARD_THEME.border },
-  statusActionButtonPrimary: { backgroundColor: COLORS.gold, borderColor: COLORS.gold },
-  statusActionButtonTextSecondary: { color: STATUS_CARD_THEME.secondaryText, fontSize: 13, fontWeight: "700" },
-  statusActionButtonTextPrimary: { color: COLORS.darkNavy, fontSize: 13, fontWeight: "700" },
-  rewatchCard: { backgroundColor: STATUS_CARD_THEME.surface, justifyContent: "space-between" },
-  rewatchCardTitle: { color: STATUS_CARD_THEME.primaryText, fontSize: 20, fontWeight: "700", marginTop: 8 },
-  rewatchCardPlayCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: COLORS.gold, alignItems: "center", justifyContent: "center", alignSelf: "center", marginTop: 16 },
-  completedSummaryCard: { backgroundColor: STATUS_CARD_THEME.surfaceAlt, justifyContent: "flex-start" },
-  completedDateText: { color: STATUS_CARD_THEME.mutedText, fontSize: 12, fontWeight: "600", marginBottom: 8 },
-  ratingContainer: { flexDirection: "row", gap: 5 },
-  starButton: { width: 44, height: 44, position: "relative", justifyContent: "center", alignItems: "center" },
+  timelineCard: {
+    position: "relative" as const, borderRadius: 18, backgroundColor: STATUS_CARD_THEME.surface,
+    borderWidth: 1, borderColor: STATUS_CARD_THEME.border, paddingHorizontal: 16, paddingVertical: 16,
+  },
+  timelineLine: {
+    position: "absolute" as const, left: 26, top: 22, bottom: 22,
+    width: 2, backgroundColor: STATUS_CARD_THEME.progressTrack,
+  },
+  timelineRow: { flexDirection: "row", alignItems: "flex-start" },
+  timelineCompleteRow: { flexDirection: "row", alignItems: "center" },
+  timelineNodeColumn: { width: 20, alignItems: "center", zIndex: 1 },
+  timelineNodeFilled: {
+    width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.gold,
+  },
+  timelineNodeEmpty: {
+    width: 12, height: 12, borderRadius: 6, borderWidth: 2,
+    borderColor: STATUS_CARD_THEME.mutedText, backgroundColor: STATUS_CARD_THEME.surface,
+  },
+  timelineContent: { flex: 1, paddingLeft: 10, paddingBottom: 14 },
+  timelineNodeLabel: { color: STATUS_CARD_THEME.secondaryText, fontSize: 13, fontWeight: "700" },
+  timelineNodeDate: { color: STATUS_CARD_THEME.primaryText, fontSize: 15, fontWeight: "600", marginTop: 2 },
+  timelineProgressContent: { flex: 1, paddingLeft: 10, paddingVertical: 10 },
+  timelineProgressBarTrack: {
+    height: 10, borderRadius: 5, backgroundColor: STATUS_CARD_THEME.progressTrack, overflow: "hidden" as const,
+  },
+  timelineProgressBarFill: { height: "100%" as const, borderRadius: 5, backgroundColor: COLORS.gold },
+  timelineProgressLabel: { color: STATUS_CARD_THEME.primaryText, fontSize: 13, fontWeight: "700", marginTop: 6 },
+  timelineDaysLabel: { color: STATUS_CARD_THEME.mutedText, fontSize: 12, fontWeight: "600", marginTop: 2 },
+  timelineCompleteAction: { color: COLORS.gold, fontSize: 13, fontWeight: "700", marginLeft: "auto" as const },
+  completedCard: {
+    borderRadius: 18, backgroundColor: STATUS_CARD_THEME.surface, borderWidth: 1,
+    borderColor: STATUS_CARD_THEME.border, paddingHorizontal: 16, paddingVertical: 16,
+  },
+  completedHeader: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16,
+  },
+  completedBadge: { flexDirection: "row", alignItems: "center", gap: 6 },
+  completedBadgeText: { color: COLORS.gold, fontSize: 14, fontWeight: "700" },
+  completedDateText: { color: STATUS_CARD_THEME.mutedText, fontSize: 12, fontWeight: "600" },
+  ratingSection: { alignItems: "center", marginBottom: 16 },
+  ratingContainer: { flexDirection: "row", gap: 8 },
+  starButton: { width: 48, height: 48, position: "relative", justifyContent: "center", alignItems: "center" },
   starTouchOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: "row" },
   starHalfLeft: { flex: 1 },
   starHalfRight: { flex: 1 },
-  ratingValue: { marginTop: 8, color: COLORS.gold, fontSize: 13, fontWeight: "700" },
-  reviewInput: { backgroundColor: STATUS_CARD_THEME.inputSurface, borderRadius: 12, borderWidth: 1, borderColor: STATUS_CARD_THEME.inputBorder, paddingHorizontal: 12, paddingVertical: 10, color: STATUS_CARD_THEME.primaryText, fontSize: 13, minHeight: 88, textAlignVertical: "top", marginTop: 8 },
+  ratingValue: { marginTop: 6, color: COLORS.gold, fontSize: 14, fontWeight: "700" },
+  reviewInput: {
+    backgroundColor: STATUS_CARD_THEME.inputSurface, borderRadius: 12, borderWidth: 1,
+    borderColor: STATUS_CARD_THEME.inputBorder, paddingHorizontal: 12, paddingVertical: 10,
+    color: STATUS_CARD_THEME.primaryText, fontSize: 13, minHeight: 88, textAlignVertical: "top",
+  },
+  rewatchButton: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 6, marginTop: 14, paddingVertical: 10,
+  },
+  rewatchButtonText: { color: COLORS.gold, fontSize: 13, fontWeight: "700" },
   bottomSheetBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
   actionMenuCard: { backgroundColor: COLORS.deepGray, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 8, paddingBottom: 34, paddingHorizontal: 16 },
   actionMenuItem: { flexDirection: "row", alignItems: "center", paddingVertical: 16, gap: 12 },

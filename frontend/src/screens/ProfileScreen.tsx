@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, RefreshControl } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, RefreshControl, Linking } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -107,16 +107,67 @@ export default function ProfileScreen() {
   const implementedActions: Record<string, () => void> = {
     editProfile: () => navigation.navigate("EditProfile"),
     about: () => navigation.navigate("About"),
+    contactEmail: () => {
+      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 문의/피드백").catch(() =>
+        Alert.alert("알림", "메일 앱을 열 수 없습니다.\nfilmory.app@gmail.com으로 문의해 주세요.")
+      )
+    },
+    bugReport: () => {
+      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 버그 신고").catch(() =>
+        Alert.alert("알림", "메일 앱을 열 수 없습니다.")
+      )
+    },
+    terms: () => Alert.alert("준비 중", "이용약관 페이지가 곧 준비될 예정입니다."),
+    privacy: () => Alert.alert("준비 중", "개인정보 처리방침 페이지가 곧 준비될 예정입니다."),
+    licenses: () => Alert.alert("준비 중", "오픈소스 라이선스 페이지가 곧 준비될 예정입니다."),
   }
 
-  const menuItems: Array<{ icon: IoniconName; label: string; action: string }> = [
+  const settingsMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
     { icon: "person-outline", label: "프로필 수정", action: "editProfile" },
     { icon: "notifications-outline", label: "알림 설정", action: "notifications" },
     { icon: "color-palette-outline", label: "테마 설정", action: "theme" },
     { icon: "cloud-upload-outline", label: "백업 및 복원", action: "backup" },
-    { icon: "help-circle-outline", label: "도움말", action: "help" },
     { icon: "information-circle-outline", label: "앱 정보", action: "about" },
   ]
+
+  const supportMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
+    { icon: "help-circle-outline", label: "도움말", action: "help" },
+    { icon: "mail-outline", label: "이메일 문의", action: "contactEmail" },
+    { icon: "bug-outline", label: "버그 신고", action: "bugReport" },
+  ]
+
+  const legalMenu: Array<{ icon: IoniconName; label: string; action: string }> = [
+    { icon: "document-text-outline", label: "이용약관", action: "terms" },
+    { icon: "shield-checkmark-outline", label: "개인정보 처리방침", action: "privacy" },
+    { icon: "code-slash-outline", label: "오픈소스 라이선스", action: "licenses" },
+  ]
+
+  const renderMenuGroup = (items: Array<{ icon: IoniconName; label: string; action: string }>) => (
+    <>
+      {items.map((item, index) => {
+        const isImplemented = !!implementedActions[item.action]
+        return (
+          <TouchableOpacity
+            key={index}
+            style={[styles.menuItem, !isImplemented && { opacity: 0.5 }]}
+            onPress={() => {
+              if (isImplemented) {
+                implementedActions[item.action]()
+              } else {
+                Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")
+              }
+            }}
+          >
+            <View style={styles.menuItemLeft}>
+              <Ionicons name={item.icon} size={24} color={COLORS.gold} />
+              <Text style={styles.menuItemText}>{item.label}{!isImplemented ? " (준비 중)" : ""}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
+          </TouchableOpacity>
+        )
+      })}
+    </>
+  )
 
   return (
     <ScrollView
@@ -200,7 +251,7 @@ export default function ProfileScreen() {
       {/* Divider: Collections ~ Menu */}
       <View style={styles.sectionDivider} />
 
-      {/* Menu Items */}
+      {/* 설정 */}
       <View style={styles.menuSection}>
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleRow}>
@@ -208,28 +259,35 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>설정</Text>
           </View>
         </View>
-        {menuItems.map((item, index) => {
-          const isImplemented = !!implementedActions[item.action]
-          return (
-            <TouchableOpacity
-              key={index}
-              style={[styles.menuItem, !isImplemented && { opacity: 0.5 }]}
-              onPress={() => {
-                if (isImplemented) {
-                  implementedActions[item.action]()
-                } else {
-                  Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")
-                }
-              }}
-            >
-              <View style={styles.menuItemLeft}>
-                <Ionicons name={item.icon} size={24} color={COLORS.gold} />
-                <Text style={styles.menuItemText}>{item.label}{!isImplemented ? " (준비 중)" : ""}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
-            </TouchableOpacity>
-          )
-        })}
+        {renderMenuGroup(settingsMenu)}
+      </View>
+
+      {/* Divider */}
+      <View style={styles.sectionDivider} />
+
+      {/* 문의 및 지원 */}
+      <View style={styles.menuSection}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="chatbubbles-outline" size={20} color={COLORS.gold} />
+            <Text style={styles.sectionTitle}>문의 및 지원</Text>
+          </View>
+        </View>
+        {renderMenuGroup(supportMenu)}
+      </View>
+
+      {/* Divider */}
+      <View style={styles.sectionDivider} />
+
+      {/* 법적 정보 */}
+      <View style={styles.menuSection}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="document-outline" size={20} color={COLORS.gold} />
+            <Text style={styles.sectionTitle}>법적 정보</Text>
+          </View>
+        </View>
+        {renderMenuGroup(legalMenu)}
       </View>
 
       {/* Logout Button */}

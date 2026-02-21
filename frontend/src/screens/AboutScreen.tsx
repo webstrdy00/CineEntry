@@ -7,6 +7,44 @@ import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 
 type AboutScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type IoniconName = keyof typeof Ionicons.glyphMap
+
+const APP_VERSION = "1.0.0"
+const BUILD_NUMBER = "1"
+
+interface InfoRowProps {
+  label: string
+  value: string
+}
+
+function InfoRow({ label, value }: InfoRowProps) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  )
+}
+
+interface FeatureItemProps {
+  icon: IoniconName
+  title: string
+  description: string
+}
+
+function FeatureItem({ icon, title, description }: FeatureItemProps) {
+  return (
+    <View style={styles.featureItem}>
+      <View style={styles.featureIconContainer}>
+        <Ionicons name={icon} size={20} color={COLORS.gold} />
+      </View>
+      <View style={styles.featureContent}>
+        <Text style={styles.featureTitle}>{title}</Text>
+        <Text style={styles.featureDescription}>{description}</Text>
+      </View>
+    </View>
+  )
+}
 
 export default function AboutScreen() {
   const navigation = useNavigation<AboutScreenNavigationProp>()
@@ -16,7 +54,7 @@ export default function AboutScreen() {
     <ScrollView
       style={styles.container}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: 40 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
     >
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -27,66 +65,111 @@ export default function AboutScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* App Logo Area */}
-      <View style={styles.logoArea}>
+      {/* App Identity */}
+      <View style={styles.identityArea}>
         <View style={styles.logoContainer}>
-          <Ionicons name="film" size={64} color={COLORS.gold} />
+          <Ionicons name="film" size={48} color={COLORS.gold} />
         </View>
         <Text style={styles.appName}>Filmory</Text>
         <Text style={styles.tagline}>나만의 영화 기록 앱</Text>
-        <Text style={styles.version}>버전 1.0.0</Text>
+        <View style={styles.versionBadge}>
+          <Text style={styles.versionText}>v{APP_VERSION}</Text>
+        </View>
       </View>
 
-      {/* Info Cards */}
-      <View style={styles.cardsContainer}>
-        {/* 기능 소개 Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="star-outline" size={20} color={COLORS.gold} />
-            <Text style={styles.cardTitle}>기능 소개</Text>
-          </View>
-          <View style={styles.bulletList}>
-            <View style={styles.bulletItem}>
-              <Ionicons name="search-outline" size={16} color={COLORS.gold} />
-              <Text style={styles.bulletText}>영화 검색 및 기록</Text>
-            </View>
-            <View style={styles.bulletItem}>
-              <Ionicons name="star-outline" size={16} color={COLORS.gold} />
-              <Text style={styles.bulletText}>별점 및 리뷰 작성</Text>
-            </View>
-            <View style={styles.bulletItem}>
-              <Ionicons name="folder-outline" size={16} color={COLORS.gold} />
-              <Text style={styles.bulletText}>컬렉션 관리</Text>
-            </View>
-            <View style={styles.bulletItem}>
-              <Ionicons name="bar-chart-outline" size={16} color={COLORS.gold} />
-              <Text style={styles.bulletText}>관람 통계</Text>
-            </View>
-          </View>
-        </View>
+      {/* Divider */}
+      <View style={styles.sectionDivider} />
 
-        {/* 연락처 Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Ionicons name="mail-outline" size={20} color={COLORS.gold} />
-            <Text style={styles.cardTitle}>연락처</Text>
-          </View>
-          <View style={styles.contactList}>
-            <View style={styles.contactItem}>
-              <Text style={styles.contactLabel}>이메일</Text>
-              <Text style={styles.contactValue}>filmory@example.com</Text>
+      {/* 주요 기능 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>주요 기능</Text>
+        <View style={styles.featuresGrid}>
+          <FeatureItem
+            icon="search-outline"
+            title="영화 검색"
+            description="KOBIS, TMDb 기반 국내외 영화 검색 및 상세 정보 조회"
+          />
+          <FeatureItem
+            icon="create-outline"
+            title="감상 기록"
+            description="별점, 한줄평, 관람일, 시청 진행도를 기록하고 관리"
+          />
+          <FeatureItem
+            icon="folder-outline"
+            title="스마트 컬렉션"
+            description="장르별, 평점별, 인생 영화 등 자동 분류 컬렉션"
+          />
+          <FeatureItem
+            icon="stats-chart-outline"
+            title="관람 통계"
+            description="월별 관람 추이, 장르 분포, 평균 평점 등 다양한 통계"
+          />
+          <FeatureItem
+            icon="heart-outline"
+            title="인생 영화"
+            description="특별한 영화를 인생 영화로 지정하여 따로 모아보기"
+          />
+          <FeatureItem
+            icon="pricetag-outline"
+            title="태그 관리"
+            description="나만의 태그로 영화를 분류하고 빠르게 검색"
+          />
+        </View>
+      </View>
+
+      {/* Divider */}
+      <View style={styles.sectionDivider} />
+
+      {/* 앱 정보 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>앱 정보</Text>
+        <View style={styles.infoCard}>
+          <InfoRow label="앱 이름" value="Filmory" />
+          <View style={styles.infoDivider} />
+          <InfoRow label="버전" value={`${APP_VERSION} (${BUILD_NUMBER})`} />
+        </View>
+      </View>
+
+      {/* Divider */}
+      <View style={styles.sectionDivider} />
+
+      {/* 데이터 출처 */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>데이터 출처</Text>
+        <View style={styles.infoCard}>
+          <View style={styles.dataSourceItem}>
+            <View style={styles.dataSourceBadge}>
+              <Text style={styles.dataSourceBadgeText}>KOBIS</Text>
             </View>
-            <View style={styles.contactDivider} />
-            <View style={styles.contactItem}>
-              <Text style={styles.contactLabel}>버전</Text>
-              <Text style={styles.contactValue}>1.0.0</Text>
+            <View style={styles.dataSourceContent}>
+              <Text style={styles.dataSourceName}>영화진흥위원회</Text>
+              <Text style={styles.dataSourceDesc}>국내 영화 정보 및 박스오피스</Text>
+            </View>
+          </View>
+          <View style={styles.infoDivider} />
+          <View style={styles.dataSourceItem}>
+            <View style={styles.dataSourceBadge}>
+              <Text style={styles.dataSourceBadgeText}>TMDb</Text>
+            </View>
+            <View style={styles.dataSourceContent}>
+              <Text style={styles.dataSourceName}>The Movie Database</Text>
+              <Text style={styles.dataSourceDesc}>해외 영화 정보 및 포스터 이미지</Text>
             </View>
           </View>
         </View>
+        <Text style={styles.dataSourceNotice}>
+          본 앱은 KOBIS와 TMDb의 API를 활용하며, 해당 서비스의 데이터 정책을 준수합니다.
+        </Text>
       </View>
 
       {/* Footer */}
-      <Text style={styles.footer}>Made with love for movie lovers</Text>
+      <View style={styles.footerArea}>
+        <Ionicons name="film-outline" size={20} color={COLORS.lightGray} style={{ opacity: 0.4 }} />
+        <Text style={styles.footerText}>
+          {`\u00A9 ${new Date().getFullYear()} Filmory. All rights reserved.`}
+        </Text>
+        <Text style={styles.footerSubtext}>Made with love for movie lovers</Text>
+      </View>
     </ScrollView>
   )
 }
@@ -100,7 +183,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 16,
   },
   backButton: {
     padding: 4,
@@ -115,91 +198,184 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 32,
   },
-  logoArea: {
+
+  // Identity
+  identityArea: {
     alignItems: "center",
-    paddingVertical: 32,
+    paddingVertical: 28,
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
+    width: 88,
+    height: 88,
+    borderRadius: 22,
     backgroundColor: COLORS.deepGray,
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.2)",
   },
   appName: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "bold",
     color: COLORS.white,
-    marginBottom: 8,
+    marginBottom: 6,
+    letterSpacing: 1,
   },
   tagline: {
-    fontSize: 16,
-    color: COLORS.lightGray,
-    marginBottom: 8,
-  },
-  version: {
     fontSize: 14,
     color: COLORS.lightGray,
+    marginBottom: 12,
   },
-  cardsContainer: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
-  card: {
-    backgroundColor: COLORS.deepGray,
+  versionBadge: {
+    backgroundColor: "rgba(212,175,55,0.12)",
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderRadius: 12,
-    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.2)",
   },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+  versionText: {
+    fontSize: 13,
+    color: COLORS.gold,
+    fontWeight: "600",
   },
-  cardTitle: {
+
+  // Sections
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.08)",
+    marginHorizontal: 20,
+    marginVertical: 4,
+  },
+  section: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+  },
+  sectionTitle: {
     fontSize: 16,
     fontWeight: "bold",
     color: COLORS.white,
+    marginBottom: 16,
   },
-  bulletList: {
-    gap: 12,
+
+  // Info card
+  infoCard: {
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
-  bulletItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  bulletText: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-  },
-  contactList: {
-    gap: 0,
-  },
-  contactItem: {
+  infoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 13,
   },
-  contactDivider: {
-    height: 1,
-    backgroundColor: "rgba(160,160,160,0.15)",
-  },
-  contactLabel: {
+  infoLabel: {
     fontSize: 14,
     color: COLORS.lightGray,
   },
-  contactValue: {
+  infoValue: {
     fontSize: 14,
     color: COLORS.white,
+    fontWeight: "500",
   },
-  footer: {
-    textAlign: "center",
-    color: COLORS.lightGray,
+  infoDivider: {
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.1)",
+  },
+
+  // Features
+  featuresGrid: {
+    gap: 12,
+  },
+  featureItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
+  },
+  featureIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(212,175,55,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.white,
+    marginBottom: 3,
+  },
+  featureDescription: {
     fontSize: 13,
-    marginTop: 40,
+    color: COLORS.lightGray,
+    lineHeight: 18,
+  },
+
+  // Data sources
+  dataSourceItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingVertical: 14,
+  },
+  dataSourceBadge: {
+    backgroundColor: "rgba(212,175,55,0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 52,
+    alignItems: "center",
+  },
+  dataSourceBadgeText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.gold,
+    letterSpacing: 0.5,
+  },
+  dataSourceContent: {
+    flex: 1,
+  },
+  dataSourceName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.white,
+    marginBottom: 2,
+  },
+  dataSourceDesc: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+  },
+  dataSourceNotice: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    lineHeight: 18,
+    marginTop: 12,
+    opacity: 0.7,
+  },
+
+  // Footer
+  footerArea: {
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 20,
+    gap: 8,
+  },
+  footerText: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    opacity: 0.5,
+  },
+  footerSubtext: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    opacity: 0.35,
   },
 })
