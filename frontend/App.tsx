@@ -25,6 +25,10 @@ import AboutScreen from "./src/screens/AboutScreen"
 import HelpScreen from "./src/screens/HelpScreen"
 import TermsScreen from "./src/screens/TermsScreen"
 import PrivacyScreen from "./src/screens/PrivacyScreen"
+import StreakDetailScreen from "./src/screens/StreakDetailScreen"
+import StreakSettingsScreen from "./src/screens/StreakSettingsScreen"
+import WatchCalendarScreen from "./src/screens/WatchCalendarScreen"
+import WatchCalendarSettingsScreen from "./src/screens/WatchCalendarSettingsScreen"
 
 import type { RootStackParamList, TabParamList } from "./src/types"
 import { COLORS } from "./src/constants/colors"
@@ -157,6 +161,26 @@ function MainStack() {
       <Stack.Screen
         name="Privacy"
         component={PrivacyScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StreakDetail"
+        component={StreakDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StreakSettings"
+        component={StreakSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WatchCalendar"
+        component={WatchCalendarScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="WatchCalendarSettings"
+        component={WatchCalendarSettingsScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

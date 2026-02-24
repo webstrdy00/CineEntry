@@ -9,7 +9,7 @@ import { COLORS } from "../constants/colors"
 import MovieCard from "../components/MovieCard"
 import StatCard from "../components/StatCard"
 import type { RootStackParamList } from "../types"
-import { getOverallStats } from "../services/statsService"
+import { getOverallStats, getStreakData } from "../services/statsService"
 import { getMovies } from "../services/movieService"
 import { updateUserProfile } from "../services/userService"
 import { getCollections } from "../services/collectionService"
@@ -39,6 +39,7 @@ export default function HomeScreen() {
   const [watchingMovies, setWatchingMovies] = useState<any[]>([])
   const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
   const [collections, setCollections] = useState<any[]>([])
+  const [streakData, setStreakData] = useState<any>(null)
   const [isEditingGoal, setIsEditingGoal] = useState(false)
   const [isSavingGoal, setIsSavingGoal] = useState(false)
 
@@ -67,7 +68,7 @@ export default function HomeScreen() {
       console.log('📡 HomeScreen: API 호출 시작')
 
       // API 호출
-      const [statsData, watchingData, watchlistData, collectionsData] = await Promise.all([
+      const [statsData, watchingData, watchlistData, collectionsData, streakDataResult] = await Promise.all([
         getOverallStats(currentYear).catch((err) => {
           console.error('❌ getOverallStats 실패:', err.message)
           return null
@@ -84,14 +85,19 @@ export default function HomeScreen() {
           console.error('❌ getCollections 실패:', err.message)
           return []
         }),
+        getStreakData().catch((err) => {
+          console.error('❌ getStreakData 실패:', err.message)
+          return null
+        }),
       ])
 
-      console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, collectionsData })
+      console.log('✅ HomeScreen: API 호출 완료', { statsData, watchingData, watchlistData, collectionsData, streakDataResult })
 
       setStats(statsData || defaultStats)
       setWatchingMovies(watchingData)
       setWatchlistMovies(watchlistData)
       setCollections(collectionsData)
+      setStreakData(streakDataResult)
     } catch (error: any) {
       console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
       setError(true)
@@ -138,6 +144,28 @@ export default function HomeScreen() {
       </View>
     )
   }
+
+  // 이번 주 날짜 (월~일) 배열 반환
+  const getThisWeekDates = (): Date[] => {
+    const today = new Date()
+    const dayOfWeek = today.getDay() // 0=Sun, 1=Mon, ...
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7))
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday)
+      d.setDate(monday.getDate() + i)
+      return d
+    })
+  }
+
+  const isDateInWatchDates = (date: Date, watchDates: string[]): boolean => {
+    const dateStr = date.toISOString().split('T')[0]
+    return watchDates.includes(dateStr)
+  }
+
+  const thisWeekDates = getThisWeekDates()
+  const weekDayLabels = ['월', '화', '수', '목', '금', '토', '일']
+  const streakWatchDates: string[] = streakData?.streak_dates || []
 
   // 연간 목표 데이터
   const yearlyGoal = {
@@ -283,6 +311,58 @@ export default function HomeScreen() {
           color={COLORS.gold}
         />
       </View>
+
+        {/* Streak Card */}
+        <TouchableOpacity
+          style={styles.streakCard}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("StreakDetail")}
+        >
+          <View style={styles.streakCardHeader}>
+            <Ionicons name="flame" size={22} color="#FF6B35" />
+            <Text style={styles.streakCardTitle}>연속 기록</Text>
+            <Text style={styles.streakCardValue}>
+              {streakData
+                ? (streakData.streak_type === 'weekly' || streakData.streak_type === 'custom')
+                  ? `${streakData.current_streak}주`
+                  : `${streakData.current_streak}일째`
+                : '0일째'}
+            </Text>
+          </View>
+          <View style={styles.streakWeekRow}>
+            {thisWeekDates.map((date, idx) => {
+              const checked = isDateInWatchDates(date, streakWatchDates)
+              const isSunday = idx === 6
+              return (
+                <View key={idx} style={styles.streakDayItem}>
+                  <Ionicons
+                    name={checked ? "checkmark-circle" : "ellipse-outline"}
+                    size={28}
+                    color={checked ? "#4ECDC4" : COLORS.lightGray}
+                  />
+                  <Text style={[styles.streakDayLabel, isSunday && styles.streakSundayLabel]}>
+                    {weekDayLabels[idx]}
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
+        </TouchableOpacity>
+
+        {/* Watch Calendar Card */}
+        <TouchableOpacity
+          style={styles.calendarCard}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("WatchCalendar")}
+        >
+          <View style={styles.calendarCardContent}>
+            <View>
+              <Text style={styles.calendarCardTitle}>시청 달력</Text>
+              <Text style={styles.calendarCardSubtitle}>이번 달은 얼마나 보셨나요?</Text>
+            </View>
+            <Ionicons name="calendar-outline" size={36} color={COLORS.gold} />
+          </View>
+        </TouchableOpacity>
 
         {/* Watchlist Section */}
         <View style={styles.section}>
@@ -653,6 +733,68 @@ const styles = StyleSheet.create({
   },
   collectionCardCount: {
     fontSize: 12,
+    color: COLORS.lightGray,
+  },
+  streakCard: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 16,
+    padding: 16,
+  },
+  streakCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+    gap: 8,
+  },
+  streakCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.white,
+    flex: 1,
+  },
+  streakCardValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#FF6B35",
+  },
+  streakWeekRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  streakDayItem: {
+    alignItems: "center",
+    gap: 4,
+  },
+  streakDayLabel: {
+    fontSize: 11,
+    color: COLORS.lightGray,
+    fontWeight: "600",
+  },
+  streakSundayLabel: {
+    color: "#e74c3c",
+  },
+  calendarCard: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 16,
+    padding: 20,
+  },
+  calendarCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  calendarCardTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: COLORS.white,
+    marginBottom: 4,
+  },
+  calendarCardSubtitle: {
+    fontSize: 13,
     color: COLORS.lightGray,
   },
 })

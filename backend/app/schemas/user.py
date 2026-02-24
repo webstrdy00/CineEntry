@@ -25,6 +25,8 @@ class UserUpdate(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     yearly_goal: Optional[int] = None
+    streak_type: Optional[str] = None  # 'daily' | 'weekly' | 'custom'
+    streak_min_days: Optional[int] = None  # custom 타입일 때 주당 최소 시청 일수
 
 
 class UserResponse(UserBase):

@@ -22,6 +22,10 @@ class User(Base):
     email_verified = Column(Boolean, default=False)
     token_version = Column(Integer, default=0)  # 강제 로그아웃용
 
+    # 스트릭 설정
+    streak_type = Column(String(20), default="daily")  # 'daily' | 'weekly' | 'custom'
+    streak_min_days = Column(Integer, default=1)  # custom 타입일 때 주당 최소 시청 일수
+
     # Relationships
     user_movies = relationship("UserMovie", back_populates="user", cascade="all, delete-orphan")
     user_images = relationship("UserImage", back_populates="user", cascade="all, delete-orphan")

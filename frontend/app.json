@@ -6,11 +6,15 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "filmory",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.filmory.app",
-      "associatedDomains": ["applinks:owblpingqcelupohuspg.supabase.co"]
+      "associatedDomains": [
+        "applinks:owblpingqcelupohuspg.supabase.co"
+      ]
     },
     "android": {
       "package": "com.filmory.app",
@@ -25,10 +29,17 @@
               "pathPrefix": "/auth/v1/callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
-    "plugins": ["expo-asset", "expo-font"]
+    "plugins": [
+      "expo-asset",
+      "expo-font",
+      "expo-media-library\\"
+    ]
   }
 }

@@ -108,6 +108,49 @@ export interface CollectionDetail extends Collection {
 }
 
 // ============================================
+// Streak & Calendar Types
+// ============================================
+
+export interface StreakData {
+  current_streak: number
+  longest_streak: number
+  streak_type: string // 'daily' | 'weekly' | 'custom'
+  streak_min_days: number
+  last_watch_date?: string
+  is_active_today: boolean
+  streak_dates: string[] // current week dates for HomeScreen
+  current_streak_start?: string
+  current_streak_end?: string
+  longest_streak_start?: string
+  longest_streak_end?: string
+  weekly_watch_count: number
+}
+
+export interface StreakDates {
+  year: number
+  month: number
+  dates: string[] // "YYYY-MM-DD" format
+}
+
+export interface CalendarDay {
+  date: string // "YYYY-MM-DD"
+  movie_count: number
+  movies?: { id: number; title: string; poster_url?: string }[]
+}
+
+export interface CalendarData {
+  year: number
+  month: number
+  days: CalendarDay[]
+}
+
+export interface StreakSettings {
+  notification_enabled: boolean
+  notification_time?: string // "HH:MM"
+  timezone?: string
+}
+
+// ============================================
 // Navigation Types
 // ============================================
 
@@ -126,6 +169,10 @@ export type RootStackParamList = {
   Help: undefined
   Terms: undefined
   Privacy: undefined
+  StreakDetail: undefined
+  StreakSettings: undefined
+  WatchCalendar: undefined
+  WatchCalendarSettings: undefined
 }
 
 export type TabParamList = {

@@ -124,7 +124,7 @@ api.interceptors.request.use(
 
     // FastAPI trailing slash 처리
     if (config.url && !config.url.match(/\/\d+/) && !config.url.endsWith('/')) {
-      const specialPaths = ['/search', '/metadata', '/from-metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me', '/tags', '/callback', '/auth'];
+      const specialPaths = ['/search', '/metadata', '/from-metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me', '/tags', '/callback', '/auth', '/streak', '/calendar', '/settings'];
       const hasSpecialPath = specialPaths.some(path => config.url!.includes(path));
       if (!hasSpecialPath) {
         config.url = config.url + '/';
