@@ -17,7 +17,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { useState, useEffect, useRef } from "react"
 import * as ImagePicker from "expo-image-picker"
+import { isAxiosError } from "axios"
 import { COLORS } from "../constants/colors"
+import {
+  ALLOWED_AVATAR_MIME_TYPES,
+  MAX_AVATAR_FILE_SIZE_BYTES,
+  YEARLY_GOAL_MAX,
+  YEARLY_GOAL_MIN,
+} from "../constants/profile"
 import type { RootStackParamList } from "../types"
 import { useAuth } from "../contexts/AuthContext"
 import { getCurrentUser, updateUserProfile, deleteUser } from "../services/userService"
@@ -47,6 +54,34 @@ export default function EditProfileScreen() {
 
   // 원본 값 (변경 감지용)
   const originalValues = useRef({ displayName: "", avatarUrl: "", yearlyGoal: "" })
+  const isBusy = saving || uploadingAvatar || isDeleting
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (!isAxiosError(error)) return fallback
+
+    if (!error.response) {
+      return "네트워크 연결을 확인하고 다시 시도해주세요."
+    }
+
+    const responseData = error.response.data as any
+    const detail = responseData?.detail
+    if (typeof detail === "string") {
+      return detail
+    }
+    if (Array.isArray(detail) && typeof detail[0]?.msg === "string") {
+      return detail[0].msg
+    }
+
+    if (error.response.status === 401) {
+      return "세션이 만료되었습니다. 다시 로그인해주세요."
+    }
+
+    if (error.response.status === 422) {
+      return "입력값을 확인해주세요."
+    }
+
+    return fallback
+  }
 
   useEffect(() => {
     loadUser()
@@ -56,20 +91,20 @@ export default function EditProfileScreen() {
     try {
       setLoading(true)
       const user = await getCurrentUser()
-      const name = user.display_name || ""
-      const avatar = user.avatar_url || ""
+      const name = (user.display_name || "").trim()
+      const avatar = (user.avatar_url || "").trim()
       const goal = user.yearly_goal?.toString() || "100"
 
       setDisplayName(name)
       setAvatarUrl(avatar)
       setYearlyGoal(goal)
       setEmail(user.email || "")
-      setAuthProvider((user as any).auth_provider || "email")
+      setAuthProvider(user.auth_provider || "email")
       setCreatedAt(user.created_at || "")
 
       originalValues.current = { displayName: name, avatarUrl: avatar, yearlyGoal: goal }
     } catch (error) {
-      showAlert("오류", "사용자 정보를 불러오지 못했습니다.", [
+      showAlert("오류", getErrorMessage(error, "사용자 정보를 불러오지 못했습니다."), [
         { text: "확인", onPress: () => navigation.goBack() },
       ])
     } finally {
@@ -86,40 +121,49 @@ export default function EditProfileScreen() {
   }
 
   const handleSave = async () => {
+    if (isBusy) return
+
     const trimmedName = displayName.trim()
     if (!trimmedName) {
       showAlert("알림", "이름을 입력해주세요.")
       return
     }
 
-    const goalNum = parseInt(yearlyGoal, 10)
-    if (yearlyGoal.trim() && (isNaN(goalNum) || goalNum < 1 || goalNum > 999)) {
-      showAlert("알림", "연간 목표는 1~999 사이의 숫자를 입력해주세요.")
+    const trimmedGoal = yearlyGoal.trim()
+    const goalNum = trimmedGoal ? parseInt(trimmedGoal, 10) : 100
+    if (trimmedGoal && (isNaN(goalNum) || goalNum < YEARLY_GOAL_MIN || goalNum > YEARLY_GOAL_MAX)) {
+      showAlert("알림", `연간 목표는 ${YEARLY_GOAL_MIN}~${YEARLY_GOAL_MAX} 사이의 숫자를 입력해주세요.`)
       return
     }
 
     try {
       setSaving(true)
+      const trimmedAvatar = avatarUrl.trim()
       await updateUserProfile({
         display_name: trimmedName,
-        avatar_url: avatarUrl.trim() || undefined,
-        yearly_goal: goalNum || 100,
+        avatar_url: trimmedAvatar ? trimmedAvatar : null,
+        yearly_goal: goalNum,
       })
       await refreshUser()
       originalValues.current = {
         displayName: trimmedName,
-        avatarUrl: avatarUrl.trim(),
-        yearlyGoal: (goalNum || 100).toString(),
+        avatarUrl: trimmedAvatar,
+        yearlyGoal: goalNum.toString(),
       }
       navigation.goBack()
     } catch (error) {
-      showAlert("오류", "프로필 수정에 실패했습니다. 다시 시도해주세요.")
+      showAlert("오류", getErrorMessage(error, "프로필 수정에 실패했습니다. 다시 시도해주세요."))
     } finally {
       setSaving(false)
     }
   }
 
   const handleBack = () => {
+    if (isBusy) {
+      showAlert("알림", "처리 중입니다. 잠시만 기다려주세요.")
+      return
+    }
+
     if (hasChanges()) {
       showAlert("변경사항 취소", "수정한 내용이 저장되지 않습니다. 나가시겠습니까?", [
         { text: "계속 수정", style: "cancel" },
@@ -131,6 +175,8 @@ export default function EditProfileScreen() {
   }
 
   const handlePickAvatar = async () => {
+    if (isBusy) return
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (status !== "granted") {
       showAlert("권한 필요", "사진 라이브러리 접근 권한이 필요합니다.")
@@ -147,8 +193,18 @@ export default function EditProfileScreen() {
     if (result.canceled || !result.assets?.[0]) return
 
     const asset = result.assets[0]
+    if ((asset.fileSize || 0) > MAX_AVATAR_FILE_SIZE_BYTES) {
+      showAlert("알림", "프로필 이미지는 5MB 이하 파일만 업로드할 수 있습니다.")
+      return
+    }
+
     const fileName = asset.fileName || `avatar_${Date.now()}.jpg`
-    const fileType = asset.mimeType || "image/jpeg"
+    const fileType = (asset.mimeType || "image/jpeg").toLowerCase()
+
+    if (!ALLOWED_AVATAR_MIME_TYPES.includes(fileType)) {
+      showAlert("알림", "지원하지 않는 이미지 형식입니다. JPG/PNG/WEBP 파일만 업로드할 수 있습니다.")
+      return
+    }
 
     try {
       setUploadingAvatar(true)
@@ -163,20 +219,40 @@ export default function EditProfileScreen() {
       // 2. S3에 업로드
       const imageResponse = await fetch(asset.uri)
       const blob = await imageResponse.blob()
-      await fetch(upload_url, {
+      const uploadResponse = await fetch(upload_url, {
         method: "PUT",
         headers: { "Content-Type": fileType },
         body: blob,
       })
+      if (!uploadResponse.ok) {
+        throw new Error(`업로드 실패 (${uploadResponse.status})`)
+      }
 
       // 3. avatar_url 업데이트
       setAvatarUrl(file_url)
     } catch (error) {
       console.error("아바타 업로드 실패:", error)
-      showAlert("오류", "이미지 업로드에 실패했습니다.")
+      const fallback =
+        error instanceof Error
+          ? `이미지 업로드에 실패했습니다. (${error.message})`
+          : "이미지 업로드에 실패했습니다."
+      showAlert("오류", getErrorMessage(error, fallback))
     } finally {
       setUploadingAvatar(false)
     }
+  }
+
+  const handleRemoveAvatar = () => {
+    if (isBusy) return
+    if (!avatarUrl.trim()) {
+      showAlert("알림", "이미 기본 프로필 이미지가 설정되어 있습니다.")
+      return
+    }
+
+    showAlert("프로필 이미지 제거", "기본 프로필 이미지로 되돌리시겠습니까?", [
+      { text: "취소", style: "cancel" },
+      { text: "제거", style: "destructive", onPress: () => setAvatarUrl("") },
+    ])
   }
 
   const handleDeleteAccount = async () => {
@@ -185,11 +261,12 @@ export default function EditProfileScreen() {
       setIsDeleting(true)
       await deleteUser()
       setShowDeleteModal(false)
+      setDeleteConfirmText("")
       showAlert("탈퇴 완료", "회원 탈퇴가 완료되었습니다.", [
         { text: "확인", onPress: () => signOut() },
       ])
     } catch (error) {
-      showAlert("오류", "회원 탈퇴에 실패했습니다. 다시 시도해주세요.")
+      showAlert("오류", getErrorMessage(error, "회원 탈퇴에 실패했습니다. 다시 시도해주세요."))
     } finally {
       setIsDeleting(false)
     }
@@ -228,7 +305,12 @@ export default function EditProfileScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={handleBack} style={styles.backButton} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={handleBack}
+            style={[styles.backButton, isBusy && styles.backButtonDisabled]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            disabled={isBusy}
+          >
             <Ionicons name="arrow-back" size={24} color={COLORS.white} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>프로필 수정</Text>
@@ -237,7 +319,7 @@ export default function EditProfileScreen() {
 
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
-          <TouchableOpacity onPress={handlePickAvatar} disabled={uploadingAvatar} style={styles.avatarTouchable}>
+          <TouchableOpacity onPress={handlePickAvatar} disabled={isBusy} style={styles.avatarTouchable}>
             <Image
               source={{ uri: avatarUrl || "https://i.pravatar.cc/150?img=12" }}
               style={styles.avatar}
@@ -250,7 +332,15 @@ export default function EditProfileScreen() {
               )}
             </View>
           </TouchableOpacity>
-          <Text style={styles.avatarHint}>사진을 탭하여 프로필 이미지를 변경하세요</Text>
+          <Text style={styles.avatarHint}>사진을 탭하여 프로필 이미지를 변경하세요 (최대 5MB)</Text>
+          <TouchableOpacity
+            style={[styles.removeAvatarButton, isBusy && styles.removeAvatarButtonDisabled]}
+            onPress={handleRemoveAvatar}
+            disabled={isBusy}
+          >
+            <Ionicons name="trash-outline" size={14} color={COLORS.red} />
+            <Text style={styles.removeAvatarButtonText}>기본 이미지로 변경</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Form */}
@@ -297,15 +387,15 @@ export default function EditProfileScreen() {
               />
               <Text style={styles.goalUnit}>편</Text>
             </View>
-            <Text style={styles.fieldHint}>올해 목표 관람 횟수를 설정하세요 (1~999)</Text>
+            <Text style={styles.fieldHint}>{`올해 목표 관람 횟수를 설정하세요 (${YEARLY_GOAL_MIN}~${YEARLY_GOAL_MAX})`}</Text>
           </View>
         </View>
 
         {/* Save Button */}
         <TouchableOpacity
-          style={[styles.saveButton, (saving || !hasChanges()) && styles.saveButtonDisabled]}
+          style={[styles.saveButton, (isBusy || !hasChanges()) && styles.saveButtonDisabled]}
           onPress={handleSave}
-          disabled={saving || !hasChanges()}
+          disabled={isBusy || !hasChanges()}
         >
           {saving ? (
             <ActivityIndicator size="small" color={COLORS.darkNavy} />
@@ -336,7 +426,11 @@ export default function EditProfileScreen() {
         <View style={styles.dangerSection}>
           <View style={styles.sectionDivider} />
           <Text style={styles.dangerSectionTitle}>위험 구역</Text>
-          <TouchableOpacity style={styles.deleteAccountButton} onPress={() => setShowDeleteModal(true)}>
+          <TouchableOpacity
+            style={[styles.deleteAccountButton, isBusy && styles.deleteAccountButtonDisabled]}
+            onPress={() => setShowDeleteModal(true)}
+            disabled={isBusy}
+          >
             <Ionicons name="warning-outline" size={20} color={COLORS.red} />
             <Text style={styles.deleteAccountText}>회원 탈퇴</Text>
           </TouchableOpacity>
@@ -422,6 +516,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  backButtonDisabled: {
+    opacity: 0.4,
+  },
   headerTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -462,6 +559,26 @@ const styles = StyleSheet.create({
     color: COLORS.lightGray,
     marginTop: 10,
     opacity: 0.7,
+  },
+  removeAvatarButton: {
+    marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(231, 76, 60, 0.4)",
+    backgroundColor: "rgba(231, 76, 60, 0.08)",
+  },
+  removeAvatarButtonDisabled: {
+    opacity: 0.5,
+  },
+  removeAvatarButtonText: {
+    fontSize: 12,
+    color: COLORS.red,
+    fontWeight: "600",
   },
   form: {
     marginHorizontal: 20,
@@ -591,6 +708,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(231, 76, 60, 0.3)",
+  },
+  deleteAccountButtonDisabled: {
+    opacity: 0.5,
   },
   deleteAccountText: {
     fontSize: 15,

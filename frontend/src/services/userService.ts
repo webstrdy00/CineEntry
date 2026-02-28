@@ -7,16 +7,17 @@ import api, { unwrapResponse } from '../lib/api';
 export interface User {
   id: string;
   email: string;
-  display_name?: string;
-  avatar_url?: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
   yearly_goal?: number;
+  auth_provider?: string;
   created_at: string;
   updated_at: string;
 }
 
 export interface UserUpdate {
   display_name?: string;
-  avatar_url?: string;
+  avatar_url?: string | null;
   yearly_goal?: number;
 }
 

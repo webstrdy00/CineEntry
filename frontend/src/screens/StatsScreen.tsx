@@ -8,6 +8,7 @@ import { COLORS } from "../constants/colors"
 import { getOverallStats, getMonthlyStats, getGenreStats, getTagStats } from "../services/statsService"
 import { updateUserProfile } from "../services/userService"
 import { useAlert } from "../components/CustomAlert"
+import { YEARLY_GOAL_MAX, YEARLY_GOAL_MIN } from "../constants/profile"
 
 const { width } = Dimensions.get("window")
 
@@ -39,7 +40,7 @@ export default function StatsScreen() {
 
   const handleGoalStep = async (delta: number) => {
     const currentGoal = displayStats.yearly_goal || 100
-    const nextGoal = Math.max(10, Math.min(9999, currentGoal + delta))
+    const nextGoal = Math.max(YEARLY_GOAL_MIN, Math.min(YEARLY_GOAL_MAX, currentGoal + delta))
     if (nextGoal === currentGoal) return
     const currentProgress = displayStats.yearly_progress || 0
     setStats((prev: any) => ({

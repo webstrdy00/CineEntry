@@ -14,6 +14,7 @@ import { getOverallStats, getStreakData } from "../services/statsService"
 import { getMovies } from "../services/movieService"
 import { updateUserProfile } from "../services/userService"
 import { getCollections } from "../services/collectionService"
+import { YEARLY_GOAL_MAX, YEARLY_GOAL_MIN } from "../constants/profile"
 
 const { width } = Dimensions.get("window")
 
@@ -47,7 +48,7 @@ export default function HomeScreen() {
 
   const handleGoalStep = async (delta: number) => {
     const currentGoal = stats.yearly_goal || 100
-    const nextGoal = Math.max(10, Math.min(9999, currentGoal + delta))
+    const nextGoal = Math.max(YEARLY_GOAL_MIN, Math.min(YEARLY_GOAL_MAX, currentGoal + delta))
     if (nextGoal === currentGoal) return
     setStats((prev: any) => ({ ...prev, yearly_goal: nextGoal }))
     try {

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Linking } from "react-native"
 import { useAlert } from "../components/CustomAlert"
 import { Ionicons } from "@expo/vector-icons"
+import Constants from "expo-constants"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
@@ -17,7 +18,7 @@ type IoniconName = keyof typeof Ionicons.glyphMap
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>()
   const insets = useSafeAreaInsets()
-  const { signOut, user: authUser } = useAuth()
+  const { signOut } = useAuth()
   const { showAlert } = useAlert()
 
   // State
@@ -38,9 +39,13 @@ export default function ProfileScreen() {
       setLoading(true)
       setError(false)
       const [userData, statsData] = await Promise.all([
-        getCurrentUser().catch(() => null),
+        getCurrentUser(),
         getOverallStats().catch(() => null),
       ])
+
+      if (!userData) {
+        throw new Error("사용자 정보를 불러오지 못했습니다.")
+      }
 
       setUser(userData)
       setStats(statsData)
@@ -161,6 +166,8 @@ export default function ProfileScreen() {
     </>
   )
 
+  const appVersion = Constants.expoConfig?.version || "알 수 없음"
+
   return (
     <ScrollView
       style={styles.container}
@@ -177,11 +184,11 @@ export default function ProfileScreen() {
       {/* Profile Card */}
       <View style={styles.profileCard}>
         <Image
-          source={{ uri: user?.avatar_url || authUser?.avatar_url || "https://i.pravatar.cc/150?img=12" }}
+          source={{ uri: user?.avatar_url || "https://i.pravatar.cc/150?img=12" }}
           style={styles.avatar}
         />
-        <Text style={styles.userName}>{user?.display_name || authUser?.display_name || "영화 애호가"}</Text>
-        <Text style={styles.userEmail}>{user?.email || authUser?.email || "movie@lover.com"}</Text>
+        <Text style={styles.userName}>{user?.display_name || "영화 애호가"}</Text>
+        <Text style={styles.userEmail}>{user?.email || "-"}</Text>
         <View style={styles.cardDivider} />
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
@@ -248,6 +255,10 @@ export default function ProfileScreen() {
         <Ionicons name="log-out-outline" size={20} color={COLORS.red} />
         <Text style={styles.logoutText}>로그아웃</Text>
       </TouchableOpacity>
+
+      <View style={styles.versionContainer}>
+        <Text style={styles.versionText}>{`앱 버전 v${appVersion}`}</Text>
+      </View>
 
       <View style={styles.bottomPadding} />
     </ScrollView>
@@ -390,6 +401,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.red,
     fontWeight: "600",
+  },
+  versionContainer: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  versionText: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    opacity: 0.8,
   },
   bottomPadding: {
     height: 100,

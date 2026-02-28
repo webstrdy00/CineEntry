@@ -30,11 +30,20 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 
 type StreakDetailNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
-const FIRE_COLOR = "#FF6B35"
-const STREAK_HIGHLIGHT = "rgba(93,173,226,0.25)"
-const TODAY_BG = "rgba(93,173,226,0.35)"
-const TODAY_COLOR = "#5DADE2"
-const PROGRESS_BAR_COLOR = "#3B82F6"
+const NOIR_BG = COLORS.darkNavy
+const NOIR_SURFACE = COLORS.deepGray
+const NOIR_SURFACE_ALT = COLORS.darkGray
+const NOIR_BORDER = "rgba(255,255,255,0.08)"
+const NOIR_TEXT_PRIMARY = COLORS.white
+const NOIR_TEXT_SECONDARY = COLORS.lightGray
+const NOIR_TEXT_SUBTLE = COLORS.mediumGray
+const NOIR_ACCENT = COLORS.gold
+const NOIR_ACCENT_STRONG = "#E2C35A"
+const SUNDAY_COLOR = COLORS.sundayRed
+const STREAK_HIGHLIGHT = "rgba(212,175,55,0.24)"
+const TODAY_BG = "rgba(93,173,226,0.28)"
+const TODAY_COLOR = COLORS.watchingBlue
+const PROGRESS_BAR_COLOR = COLORS.gold
 const PREV_MONTH_COLOR = "rgba(160,160,160,0.35)"
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window")
@@ -330,7 +339,7 @@ export default function StreakDetailScreen() {
               <Text
                 style={[
                   styles.weekdayLabel,
-                  idx === 6 && { color: "#e74c3c" },
+                  idx === 6 && { color: SUNDAY_COLOR },
                 ]}
               >
                 {label}
@@ -439,7 +448,7 @@ export default function StreakDetailScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={COLORS.gold} />
+        <ActivityIndicator size="large" color={NOIR_ACCENT_STRONG} />
         <Text style={styles.loadingText}>불러오는 중...</Text>
       </View>
     )
@@ -448,10 +457,10 @@ export default function StreakDetailScreen() {
   if (error) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+        <Ionicons name="cloud-offline-outline" size={48} color={NOIR_TEXT_SECONDARY} />
         <Text style={styles.errorText}>데이터를 불러올 수 없습니다</Text>
         <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-          <Ionicons name="refresh" size={18} color={COLORS.gold} />
+          <Ionicons name="refresh" size={18} color={NOIR_ACCENT_STRONG} />
           <Text style={styles.retryText}>다시 시도</Text>
         </TouchableOpacity>
       </View>
@@ -469,6 +478,7 @@ export default function StreakDetailScreen() {
   const currentType: StreakType = streakData?.streak_type === "weekly" ? "weekly" : "daily"
   const currentMinDays = streakData?.streak_min_days ?? 1
   const hasChanges = editStreakType !== currentType || (editStreakType === "weekly" && editMinDays !== currentMinDays)
+  const weeklyProgressPercent = weeklyGoal > 0 ? Math.min(100, Math.round((weeklyWatchCount / weeklyGoal) * 100)) : 0
 
   return (
     <View style={styles.container}>
@@ -479,7 +489,7 @@ export default function StreakDetailScreen() {
           style={styles.headerButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="arrow-back" size={24} color={COLORS.white} />
+          <Ionicons name="arrow-back" size={24} color={NOIR_TEXT_PRIMARY} />
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity
@@ -487,16 +497,19 @@ export default function StreakDetailScreen() {
           style={styles.headerIconButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="help-circle-outline" size={24} color={COLORS.white} />
+          <Ionicons name="help-circle-outline" size={24} color={NOIR_TEXT_PRIMARY} />
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* === Hero Section === */}
         <View style={styles.heroSection}>
-          <Ionicons name="flame" size={44} color={FIRE_COLOR} />
+          <View style={styles.heroBadge}>
+            <Ionicons name="ticket-outline" size={14} color={NOIR_ACCENT_STRONG} />
+            <Text style={styles.heroBadgeText}>연속 기록</Text>
+          </View>
           <Text style={styles.heroNumber}>{currentStreak}<Text style={styles.heroUnit}>{streakUnit}</Text></Text>
-          <Text style={styles.heroLabel}>현재 연속 시청 기록</Text>
+          <Text style={styles.heroLabel}>지금 이어가는 시청 흐름</Text>
           {currentStreak > 0 && streakData?.current_streak_start && (
             <Text style={styles.heroDateRange}>
               {formatDateDisplay(streakData.current_streak_start)} ~ {formatDateDisplay(streakData.current_streak_end)}
@@ -507,7 +520,7 @@ export default function StreakDetailScreen() {
         {/* === Mini Stat Cards === */}
         <View style={styles.miniCardRow}>
           <View style={styles.miniCard}>
-            <Ionicons name="trophy" size={20} color={COLORS.gold} />
+            <Ionicons name="trophy-outline" size={20} color={NOIR_ACCENT_STRONG} />
             <Text style={styles.miniCardValue}>{longestStreak}{streakUnit}</Text>
             <Text style={styles.miniCardLabel}>최장 기록</Text>
           </View>
@@ -520,7 +533,7 @@ export default function StreakDetailScreen() {
           ) : (
             <View style={styles.miniCard}>
               <Ionicons name="calendar-outline" size={20} color={TODAY_COLOR} />
-              <Text style={styles.miniCardValue}>{isWeekly ? "주간" : "일간"}</Text>
+              <Text style={styles.miniCardValue}>일간</Text>
               <Text style={styles.miniCardLabel}>기록 방식</Text>
             </View>
           )}
@@ -529,11 +542,15 @@ export default function StreakDetailScreen() {
         {/* Weekly Progress Bar */}
         {isWeekly && (
           <View style={styles.progressSection}>
+            <View style={styles.progressMetaRow}>
+              <Text style={styles.progressMetaLabel}>이번 주 달성률</Text>
+              <Text style={styles.progressMetaValue}>{weeklyProgressPercent}%</Text>
+            </View>
             <View style={styles.progressBarBg}>
               <View
                 style={[
                   styles.progressBarFill,
-                  { width: `${Math.min(100, (weeklyWatchCount / weeklyGoal) * 100)}%` },
+                  { width: `${weeklyProgressPercent}%` },
                 ]}
               />
             </View>
@@ -549,7 +566,7 @@ export default function StreakDetailScreen() {
             <Ionicons
               name="calendar"
               size={18}
-              color={activeTab === "calendar" ? COLORS.gold : COLORS.mediumGray}
+              color={activeTab === "calendar" ? NOIR_ACCENT_STRONG : NOIR_TEXT_SECONDARY}
               style={{ marginRight: 6 }}
             />
             <Text style={[styles.tabText, activeTab === "calendar" && styles.tabTextActive]}>달력</Text>
@@ -561,7 +578,7 @@ export default function StreakDetailScreen() {
             <Ionicons
               name="options-outline"
               size={18}
-              color={activeTab === "settings" ? COLORS.gold : COLORS.mediumGray}
+              color={activeTab === "settings" ? NOIR_ACCENT_STRONG : NOIR_TEXT_SECONDARY}
               style={{ marginRight: 6 }}
             />
             <Text style={[styles.tabText, activeTab === "settings" && styles.tabTextActive]}>설정</Text>
@@ -575,7 +592,7 @@ export default function StreakDetailScreen() {
               <Text style={styles.monthLabel}>{formatMonthDisplay(calendarYear, calendarMonth)}</Text>
               <View style={styles.monthNavButtons}>
                 <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavButton}>
-                  <Ionicons name="chevron-back" size={22} color={COLORS.white} />
+                  <Ionicons name="chevron-back" size={22} color={NOIR_TEXT_PRIMARY} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleNextMonth}
@@ -585,7 +602,7 @@ export default function StreakDetailScreen() {
                   <Ionicons
                     name="chevron-forward"
                     size={22}
-                    color={isNextMonthDisabled() ? COLORS.mediumGray : COLORS.white}
+                    color={isNextMonthDisabled() ? NOIR_TEXT_SUBTLE : NOIR_TEXT_PRIMARY}
                   />
                 </TouchableOpacity>
               </View>
@@ -593,7 +610,7 @@ export default function StreakDetailScreen() {
 
             {calendarLoading ? (
               <View style={styles.calendarLoading}>
-                <ActivityIndicator size="small" color={COLORS.gold} />
+                <ActivityIndicator size="small" color={NOIR_ACCENT_STRONG} />
               </View>
             ) : (
               renderCalendar()
@@ -623,7 +640,7 @@ export default function StreakDetailScreen() {
                 <Ionicons
                   name="today-outline"
                   size={16}
-                  color={editStreakType === "daily" ? COLORS.darkNavy : COLORS.lightGray}
+                  color={editStreakType === "daily" ? NOIR_TEXT_PRIMARY : NOIR_TEXT_SECONDARY}
                   style={{ marginRight: 6 }}
                 />
                 <Text style={[styles.segmentText, editStreakType === "daily" && styles.segmentTextActive]}>
@@ -637,7 +654,7 @@ export default function StreakDetailScreen() {
                 <Ionicons
                   name="calendar-outline"
                   size={16}
-                  color={editStreakType === "weekly" ? COLORS.darkNavy : COLORS.lightGray}
+                  color={editStreakType === "weekly" ? NOIR_TEXT_PRIMARY : NOIR_TEXT_SECONDARY}
                   style={{ marginRight: 6 }}
                 />
                 <Text style={[styles.segmentText, editStreakType === "weekly" && styles.segmentTextActive]}>
@@ -651,7 +668,7 @@ export default function StreakDetailScreen() {
               <Ionicons
                 name="information-circle-outline"
                 size={18}
-                color={COLORS.lightGray}
+                color={NOIR_TEXT_SECONDARY}
                 style={{ marginRight: 8, marginTop: 1 }}
               />
               <Text style={styles.descText}>
@@ -690,7 +707,7 @@ export default function StreakDetailScreen() {
                 disabled={saving}
               >
                 {saving ? (
-                  <ActivityIndicator size="small" color={COLORS.darkNavy} />
+                  <ActivityIndicator size="small" color={NOIR_TEXT_PRIMARY} />
                 ) : (
                   <Text style={styles.saveButtonText}>적용</Text>
                 )}
@@ -713,7 +730,7 @@ export default function StreakDetailScreen() {
           <Pressable style={styles.helpSheet} onPress={(e) => e.stopPropagation()}>
             <View style={styles.helpHandle} />
             <View style={styles.helpHeader}>
-              <Ionicons name="help-circle" size={28} color={COLORS.gold} />
+              <Ionicons name="help-circle" size={28} color={NOIR_ACCENT_STRONG} />
               <Text style={styles.helpTitle}>연속 기록이란?</Text>
             </View>
             <View style={styles.helpDivider} />
@@ -785,19 +802,19 @@ export default function StreakDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.darkNavy,
+    backgroundColor: NOIR_BG,
   },
   centered: {
     justifyContent: "center",
     alignItems: "center",
   },
   loadingText: {
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
     marginTop: 12,
     fontSize: 14,
   },
   errorText: {
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
     marginTop: 16,
     fontSize: 16,
   },
@@ -805,14 +822,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: 16,
-    backgroundColor: COLORS.deepGray,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     gap: 6,
   },
   retryText: {
-    color: COLORS.gold,
+    color: NOIR_ACCENT_STRONG,
     fontWeight: "600",
   },
   header: {
@@ -832,7 +851,9 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: COLORS.deepGray,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
     borderRadius: 20,
     marginLeft: 8,
   },
@@ -840,28 +861,54 @@ const styles = StyleSheet.create({
   // === Hero ===
   heroSection: {
     alignItems: "center",
-    paddingTop: 8,
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 14,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    borderRadius: 20,
+    paddingTop: 14,
     paddingBottom: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
+  },
+  heroBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(212,175,55,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.36)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 8,
+  },
+  heroBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: NOIR_ACCENT_STRONG,
   },
   heroNumber: {
-    fontSize: 56,
-    fontWeight: "800",
-    color: FIRE_COLOR,
-    marginTop: 4,
+    fontSize: 64,
+    fontWeight: "900",
+    letterSpacing: -1.2,
+    color: NOIR_TEXT_PRIMARY,
+    marginTop: 2,
   },
   heroUnit: {
-    fontSize: 28,
-    fontWeight: "600",
+    fontSize: 24,
+    fontWeight: "700",
+    color: NOIR_ACCENT_STRONG,
   },
   heroLabel: {
     fontSize: 15,
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
     marginTop: 2,
   },
   heroDateRange: {
     fontSize: 13,
-    color: COLORS.mediumGray,
+    color: NOIR_TEXT_SUBTLE,
     marginTop: 8,
   },
 
@@ -874,24 +921,27 @@ const styles = StyleSheet.create({
   },
   miniCard: {
     flex: 1,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 14,
+    backgroundColor: NOIR_SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    borderRadius: 16,
     padding: 16,
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   miniCardValue: {
     fontSize: 22,
-    fontWeight: "bold",
-    color: COLORS.white,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
   miniCardValueUnit: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
+    color: NOIR_TEXT_SECONDARY,
   },
   miniCardLabel: {
     fontSize: 12,
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
   },
 
   // === Progress ===
@@ -899,24 +949,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 20,
   },
+  progressMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  progressMetaLabel: {
+    fontSize: 12,
+    color: NOIR_TEXT_SECONDARY,
+    fontWeight: "600",
+  },
+  progressMetaValue: {
+    fontSize: 12,
+    color: NOIR_ACCENT_STRONG,
+    fontWeight: "800",
+  },
   progressBarBg: {
-    height: 6,
-    backgroundColor: "rgba(160,160,160,0.2)",
-    borderRadius: 3,
+    height: 7,
+    backgroundColor: "rgba(167,173,192,0.22)",
+    borderRadius: 4,
     overflow: "hidden",
   },
   progressBarFill: {
     height: "100%",
     backgroundColor: PROGRESS_BAR_COLOR,
-    borderRadius: 3,
+    borderRadius: 4,
   },
 
   // === Tabs ===
   tabBar: {
     flexDirection: "row",
     marginHorizontal: 20,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 12,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    borderRadius: 14,
     padding: 4,
     marginBottom: 16,
   },
@@ -929,22 +996,24 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   tabItemActive: {
-    backgroundColor: "rgba(212,175,55,0.15)",
+    backgroundColor: "rgba(212,175,55,0.14)",
   },
   tabText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.mediumGray,
+    fontWeight: "700",
+    color: NOIR_TEXT_SECONDARY,
   },
   tabTextActive: {
-    color: COLORS.gold,
+    color: NOIR_ACCENT_STRONG,
   },
 
   // === Calendar ===
   calendarSection: {
     marginHorizontal: 20,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    borderRadius: 18,
     padding: CALENDAR_PADDING,
   },
   monthNav: {
@@ -955,8 +1024,8 @@ const styles = StyleSheet.create({
   },
   monthLabel: {
     fontSize: 18,
-    fontWeight: "700",
-    color: COLORS.white,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
   monthNavButtons: {
     flexDirection: "row",
@@ -967,6 +1036,10 @@ const styles = StyleSheet.create({
     height: 32,
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 10,
   },
   monthNavButtonDisabled: {
     opacity: 0.4,
@@ -988,8 +1061,8 @@ const styles = StyleSheet.create({
   },
   weekdayLabel: {
     fontSize: 13,
-    fontWeight: "600",
-    color: COLORS.lightGray,
+    fontWeight: "700",
+    color: NOIR_TEXT_SECONDARY,
   },
   weekRow: {
     flexDirection: "row",
@@ -1022,23 +1095,23 @@ const styles = StyleSheet.create({
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(93,173,226,0.6)",
+    backgroundColor: "rgba(212,175,55,0.72)",
   },
   dayText: {
     fontSize: 15,
-    color: COLORS.white,
-    fontWeight: "600",
+    color: NOIR_TEXT_PRIMARY,
+    fontWeight: "700",
     zIndex: 1,
   },
   dayTextPrevMonth: {
     color: PREV_MONTH_COLOR,
   },
   dayTextSunday: {
-    color: "#e74c3c",
+    color: SUNDAY_COLOR,
   },
   dayTextStreak: {
-    fontWeight: "700",
-    color: COLORS.white,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
   dayTextToday: {
     color: TODAY_COLOR,
@@ -1051,7 +1124,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "rgba(160,160,160,0.1)",
+    borderTopColor: NOIR_BORDER,
   },
   legendItem: {
     flexDirection: "row",
@@ -1072,28 +1145,32 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 12,
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
   },
 
   // === Settings Tab ===
   settingsSection: {
     marginHorizontal: 20,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
+    backgroundColor: NOIR_SURFACE,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
+    borderRadius: 18,
     padding: 20,
   },
   settingsLabel: {
     fontSize: 13,
-    color: COLORS.lightGray,
-    fontWeight: "500",
+    color: NOIR_TEXT_SECONDARY,
+    fontWeight: "600",
     marginBottom: 10,
   },
   segmentRow: {
     flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 10,
     padding: 3,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
   },
   segmentButton: {
     flex: 1,
@@ -1104,27 +1181,29 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   segmentButtonActive: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: "rgba(212,175,55,0.14)",
   },
   segmentText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.lightGray,
+    fontWeight: "700",
+    color: NOIR_TEXT_SECONDARY,
   },
   segmentTextActive: {
-    color: COLORS.darkNavy,
+    color: NOIR_TEXT_PRIMARY,
   },
   descCard: {
     flexDirection: "row",
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
     padding: 14,
     marginBottom: 20,
   },
   descText: {
     flex: 1,
     fontSize: 13,
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
     lineHeight: 19,
   },
   daysGrid: {
@@ -1137,25 +1216,28 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: NOIR_BORDER,
     justifyContent: "center",
     alignItems: "center",
   },
   dayChipActive: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: "rgba(212,175,55,0.2)",
+    borderColor: "rgba(212,175,55,0.42)",
   },
   dayChipText: {
     fontSize: 15,
-    fontWeight: "600",
-    color: COLORS.lightGray,
+    fontWeight: "700",
+    color: NOIR_TEXT_SECONDARY,
   },
   dayChipTextActive: {
-    color: COLORS.darkNavy,
+    color: NOIR_TEXT_PRIMARY,
   },
   saveButton: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: NOIR_ACCENT,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
   },
   saveButtonDisabled: {
@@ -1163,18 +1245,22 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 15,
-    fontWeight: "bold",
-    color: COLORS.darkNavy,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
 
   // === Help Bottom Sheet ===
   helpOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.66)",
     justifyContent: "flex-end",
   },
   helpSheet: {
-    backgroundColor: COLORS.deepGray,
+    backgroundColor: NOIR_SURFACE,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: NOIR_BORDER,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
@@ -1185,7 +1271,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignSelf: "center",
     marginBottom: 16,
   },
@@ -1197,12 +1283,12 @@ const styles = StyleSheet.create({
   },
   helpTitle: {
     fontSize: 18,
-    fontWeight: "bold",
-    color: COLORS.white,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
   helpDivider: {
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: NOIR_BORDER,
     marginBottom: 16,
   },
   helpRow: {
@@ -1211,17 +1297,17 @@ const styles = StyleSheet.create({
   },
   helpDot: {
     fontSize: 14,
-    color: COLORS.gold,
+    color: NOIR_ACCENT_STRONG,
     lineHeight: 20,
   },
   helpText: {
     flex: 1,
     fontSize: 14,
-    color: COLORS.lightGray,
+    color: NOIR_TEXT_SECONDARY,
     lineHeight: 20,
   },
   helpCloseButton: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: NOIR_ACCENT,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
@@ -1229,7 +1315,7 @@ const styles = StyleSheet.create({
   },
   helpCloseText: {
     fontSize: 15,
-    fontWeight: "bold",
-    color: COLORS.darkNavy,
+    fontWeight: "800",
+    color: NOIR_TEXT_PRIMARY,
   },
 })
