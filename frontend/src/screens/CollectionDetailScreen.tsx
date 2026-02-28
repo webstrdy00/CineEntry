@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, ActivityIndicator, RefreshControl } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { COLORS } from "../constants/colors"
 import MovieCard from "../components/MovieCard"
 import type { RootStackParamList, Movie } from "../types"
+import { useAlert } from "../components/CustomAlert"
 import {
   getCollectionDetail,
   updateCollection,
@@ -25,6 +26,7 @@ export default function CollectionDetailScreen() {
   const navigation = useNavigation<CollectionDetailNavigationProp>()
   const insets = useSafeAreaInsets()
   const { id } = route.params
+  const { showAlert } = useAlert()
 
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -49,7 +51,7 @@ export default function CollectionDetailScreen() {
       setCollectionDescription(data.description || "")
     } catch (error) {
       console.error('❌ CollectionDetailScreen 데이터 로드 실패:', error)
-      Alert.alert('오류', '컬렉션 정보를 불러올 수 없습니다.')
+      showAlert('오류', '컬렉션 정보를 불러올 수 없습니다.')
       navigation.goBack()
     } finally {
       setLoading(false)
@@ -68,17 +70,17 @@ export default function CollectionDetailScreen() {
         name: collectionName,
         description: collectionDescription,
       })
-      Alert.alert("저장 완료", `컬렉션 "${collectionName}"이(가) 업데이트되었습니다.`)
+      showAlert("저장 완료", `컬렉션 "${collectionName}"이(가) 업데이트되었습니다.`)
       setIsEditMode(false)
       loadData()
     } catch (error) {
       console.error('❌ 컬렉션 저장 실패:', error)
-      Alert.alert("오류", "저장에 실패했습니다.")
+      showAlert("오류", "저장에 실패했습니다.")
     }
   }
 
   const handleDelete = () => {
-    Alert.alert("컬렉션 삭제", `"${collection?.name}" 컬렉션을 삭제하시겠습니까?`, [
+    showAlert("컬렉션 삭제", `"${collection?.name}" 컬렉션을 삭제하시겠습니까?`, [
       { text: "취소", style: "cancel" },
       {
         text: "삭제",
@@ -86,11 +88,11 @@ export default function CollectionDetailScreen() {
         onPress: async () => {
           try {
             await deleteCollection(id)
-            Alert.alert("삭제 완료", "컬렉션이 삭제되었습니다.")
+            showAlert("삭제 완료", "컬렉션이 삭제되었습니다.")
             navigation.goBack()
           } catch (error) {
             console.error('❌ 컬렉션 삭제 실패:', error)
-            Alert.alert("오류", "삭제에 실패했습니다.")
+            showAlert("오류", "삭제에 실패했습니다.")
           }
         },
       },
@@ -98,7 +100,7 @@ export default function CollectionDetailScreen() {
   }
 
   const handleRemoveMovie = (movieId: number) => {
-    Alert.alert("영화 제거", "이 영화를 컬렉션에서 제거하시겠습니까?", [
+    showAlert("영화 제거", "이 영화를 컬렉션에서 제거하시겠습니까?", [
       { text: "취소", style: "cancel" },
       {
         text: "제거",
@@ -106,11 +108,11 @@ export default function CollectionDetailScreen() {
         onPress: async () => {
           try {
             await removeMovieFromCollection(id, movieId)
-            Alert.alert("제거 완료", "영화가 컬렉션에서 제거되었습니다.")
+            showAlert("제거 완료", "영화가 컬렉션에서 제거되었습니다.")
             loadData()
           } catch (error) {
             console.error('❌ 영화 제거 실패:', error)
-            Alert.alert("오류", "제거에 실패했습니다.")
+            showAlert("오류", "제거에 실패했습니다.")
           }
         },
       },
@@ -120,11 +122,11 @@ export default function CollectionDetailScreen() {
   const handleSyncAutoCollection = async () => {
     try {
       await syncAutoCollection(id)
-      Alert.alert("동기화 완료", "자동 컬렉션이 업데이트되었습니다.")
+      showAlert("동기화 완료", "자동 컬렉션이 업데이트되었습니다.")
       loadData()
     } catch (error) {
       console.error('❌ 자동 컬렉션 동기화 실패:', error)
-      Alert.alert("오류", "동기화에 실패했습니다.")
+      showAlert("오류", "동기화에 실패했습니다.")
     }
   }
 

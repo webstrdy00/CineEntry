@@ -7,6 +7,7 @@ import { ActivityIndicator, View, StyleSheet } from "react-native"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
+import { AlertProvider } from "./src/components/CustomAlert"
 import LoginScreen from "./src/screens/LoginScreen"
 import EmailLoginScreen from "./src/screens/EmailLoginScreen"
 import SignUpScreen from "./src/screens/SignUpScreen"
@@ -26,7 +27,6 @@ import HelpScreen from "./src/screens/HelpScreen"
 import TermsScreen from "./src/screens/TermsScreen"
 import PrivacyScreen from "./src/screens/PrivacyScreen"
 import StreakDetailScreen from "./src/screens/StreakDetailScreen"
-import StreakSettingsScreen from "./src/screens/StreakSettingsScreen"
 import WatchCalendarScreen from "./src/screens/WatchCalendarScreen"
 import WatchCalendarSettingsScreen from "./src/screens/WatchCalendarSettingsScreen"
 
@@ -169,11 +169,6 @@ function MainStack() {
         options={{ headerShown: false }}
       />
       <Stack.Screen
-        name="StreakSettings"
-        component={StreakSettingsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
         name="WatchCalendar"
         component={WatchCalendarScreen}
         options={{ headerShown: false }}
@@ -210,7 +205,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <RootNavigator />
+        <AlertProvider>
+          <RootNavigator />
+        </AlertProvider>
       </AuthProvider>
     </SafeAreaProvider>
   )

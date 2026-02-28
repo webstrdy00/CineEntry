@@ -81,7 +81,7 @@ export default function MoviesScreen() {
     { id: "all", label: "전체" },
     { id: "watchlist", label: "보고 싶은" },
     { id: "watching", label: "보는 중" },
-    { id: "completed", label: "완료" },
+    { id: "completed", label: "본 영화" },
   ]
 
   // Filter and search logic
@@ -104,7 +104,7 @@ export default function MoviesScreen() {
 
   const getStatusLabel = (status?: string) => {
     if (status === "watching") return "보는 중"
-    if (status === "completed") return "완료"
+    if (status === "completed") return "본 영화"
     return "보고 싶은"
   }
 
@@ -166,7 +166,7 @@ export default function MoviesScreen() {
                 </Text>
               </View>
 
-              {item.rating && item.rating > 0 && (
+              {item.rating != null && item.rating > 0 && (
                 <View style={styles.ratingRow}>
                   <Ionicons name="star" size={14} color={COLORS.gold} />
                   <Text style={styles.ratingText}>{Number(item.rating).toFixed(1)}</Text>

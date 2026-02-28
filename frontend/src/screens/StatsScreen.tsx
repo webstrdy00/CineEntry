@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity, Alert } from "react-native"
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useState, useCallback } from "react"
 import { useFocusEffect } from "@react-navigation/native"
@@ -7,6 +7,7 @@ import { LinearGradient } from "expo-linear-gradient"
 import { COLORS } from "../constants/colors"
 import { getOverallStats, getMonthlyStats, getGenreStats, getTagStats } from "../services/statsService"
 import { updateUserProfile } from "../services/userService"
+import { useAlert } from "../components/CustomAlert"
 
 const { width } = Dimensions.get("window")
 
@@ -14,6 +15,7 @@ const GENRE_COLORS = [COLORS.gold, COLORS.red, COLORS.chartBlue, COLORS.chartGre
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() // 0-indexed
   const [loading, setLoading] = useState(true)
@@ -55,7 +57,7 @@ export default function StatsScreen() {
         yearly_goal: currentGoal,
         yearly_goal_percentage: currentGoal > 0 ? Math.round(currentProgress / currentGoal * 1000) / 10 : 0,
       }))
-      Alert.alert("오류", "목표 저장에 실패했습니다.")
+      showAlert("오류", "목표 저장에 실패했습니다.")
     } finally {
       setIsSavingGoal(false)
     }

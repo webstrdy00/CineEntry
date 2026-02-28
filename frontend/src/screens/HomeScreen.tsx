@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl, Alert } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
@@ -6,6 +6,7 @@ import { LinearGradient } from "expo-linear-gradient"
 import { useState, useCallback } from "react"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { COLORS } from "../constants/colors"
+import { useAlert } from "../components/CustomAlert"
 import MovieCard from "../components/MovieCard"
 import StatCard from "../components/StatCard"
 import type { RootStackParamList } from "../types"
@@ -21,6 +22,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
   const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
   const currentYear = new Date().getFullYear()
 
   const defaultStats = {
@@ -54,7 +56,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error("연간 목표 저장 실패:", error)
       setStats((prev: any) => ({ ...prev, yearly_goal: currentGoal }))
-      Alert.alert("오류", "목표 저장에 실패했습니다.")
+      showAlert("오류", "목표 저장에 실패했습니다.")
     } finally {
       setIsSavingGoal(false)
     }
@@ -252,12 +254,12 @@ export default function HomeScreen() {
       )}
 
       {/* Yearly Goal Card */}
-      <TouchableOpacity style={styles.goalCard} activeOpacity={0.8} onPress={() => setIsEditingGoal(!isEditingGoal)}>
-        <View style={styles.goalHeader}>
+      <View style={styles.goalCard}>
+        <TouchableOpacity style={styles.goalHeader} activeOpacity={0.7} onPress={() => setIsEditingGoal(!isEditingGoal)}>
           <Ionicons name="trophy-outline" size={24} color={COLORS.gold} />
           <Text style={styles.goalTitle}>{currentYear}년 연간 목표</Text>
           <Ionicons name={isEditingGoal ? "chevron-up" : "create-outline"} size={16} color={COLORS.lightGray} style={{ marginLeft: "auto" }} />
-        </View>
+        </TouchableOpacity>
         <View style={styles.goalContent}>
           <Text style={styles.goalNumbers}>
             <Text style={styles.goalCurrent}>{yearlyGoal.current}</Text>
@@ -288,7 +290,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </TouchableOpacity>
+      </View>
 
       {/* Stats Section */}
       <View style={styles.statsSection}>

@@ -5,9 +5,12 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Modal,
   Platform,
   Dimensions,
+  LayoutAnimation,
+  UIManager,
+  Pressable,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
@@ -17,8 +20,13 @@ import { useState, useCallback } from "react"
 import { useFocusEffect } from "@react-navigation/native"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
-import { getStreakData, getStreakDates } from "../services/statsService"
+import { getStreakData, getStreakDates, updateStreakSettings } from "../services/statsService"
 import type { StreakData, StreakDates } from "../services/statsService"
+import { useAlert } from "../components/CustomAlert"
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true)
+}
 
 type StreakDetailNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
@@ -36,6 +44,10 @@ const CELL_SIZE = Math.floor(CALENDAR_WIDTH / 7)
 const ROW_HEIGHT = CELL_SIZE
 
 const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"]
+
+type StreakType = "daily" | "weekly"
+type TabType = "calendar" | "settings"
+const MIN_DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7]
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate()
@@ -67,6 +79,7 @@ function formatMonthDisplay(year: number, month: number): string {
 export default function StreakDetailScreen() {
   const navigation = useNavigation<StreakDetailNavigationProp>()
   const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
 
   const today = new Date()
   const [calendarYear, setCalendarYear] = useState(today.getFullYear())
@@ -77,6 +90,13 @@ export default function StreakDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [calendarLoading, setCalendarLoading] = useState(false)
   const [error, setError] = useState(false)
+
+  // Tab & settings state
+  const [activeTab, setActiveTab] = useState<TabType>("calendar")
+  const [editStreakType, setEditStreakType] = useState<StreakType>("daily")
+  const [editMinDays, setEditMinDays] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
@@ -105,6 +125,8 @@ export default function StreakDetailScreen() {
         month: calendarMonth,
         dates: [...prev.dates, ...curr.dates, ...next.dates],
       })
+      setEditStreakType(streak.streak_type === "weekly" ? "weekly" : "daily")
+      setEditMinDays(streak.streak_min_days || 1)
     } catch (err) {
       setError(true)
     } finally {
@@ -131,7 +153,7 @@ export default function StreakDetailScreen() {
         dates: [...prev.dates, ...curr.dates, ...next.dates],
       })
     } catch (err) {
-      Alert.alert("오류", "날짜 데이터를 불러오지 못했습니다.")
+      showAlert("오류", "날짜 데이터를 불러오지 못했습니다.")
     } finally {
       setCalendarLoading(false)
     }
@@ -173,15 +195,40 @@ export default function StreakDetailScreen() {
     )
   }
 
+  const handleTabChange = (tab: TabType) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    if (tab === "settings") {
+      setEditStreakType(streakData?.streak_type === "weekly" ? "weekly" : "daily")
+      setEditMinDays(streakData?.streak_min_days || 1)
+    }
+    setActiveTab(tab)
+  }
+
+  const handleSaveSettings = async () => {
+    try {
+      setSaving(true)
+      const updated = await updateStreakSettings({
+        streak_type: editStreakType,
+        streak_min_days: editStreakType === "weekly" ? editMinDays : 1,
+      })
+      setStreakData(updated)
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+      setActiveTab("calendar")
+      loadCalendarDates(calendarYear, calendarMonth)
+    } catch (err) {
+      showAlert("오류", "설정 저장에 실패했습니다.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const watchDatesSet = new Set(streakDates?.dates ?? [])
   const todayStr = formatDateStr(today.getFullYear(), today.getMonth() + 1, today.getDate())
 
-  // For weekly mode
   const streakType_ = streakData?.streak_type ?? "daily"
   const isWeeklyMode = streakType_ === "weekly" || streakType_ === "custom"
   const minDays = streakData?.streak_min_days ?? 1
 
-  // Build qualifying weeks for weekly mode
   const qualifyingWeeks = new Set<string>()
   if (isWeeklyMode) {
     const weekCounts = new Map<string, number>()
@@ -208,13 +255,10 @@ export default function StreakDetailScreen() {
     return `${tempDate.getFullYear()}-W${weekNum}`
   }
 
-  // For daily mode: determine if a date is part of a consecutive streak
-  // Returns { inStreak, isFirst, isLast } for band rendering
   const getDailyBandInfo = (dateStr: string, dayIdx: number): { inStreak: boolean; isFirst: boolean; isLast: boolean } => {
     if (!watchDatesSet.has(dateStr)) {
       return { inStreak: false, isFirst: false, isLast: false }
     }
-
     const d = new Date(dateStr)
     const prevDate = new Date(d.getTime() - 86400000)
     const nextDate = new Date(d.getTime() + 86400000)
@@ -223,27 +267,19 @@ export default function StreakDetailScreen() {
 
     const hasPrev = watchDatesSet.has(prevStr)
     const hasNext = watchDatesSet.has(nextStr)
-
-    // Row boundaries force start/end
     const isRowStart = dayIdx === 0
     const isRowEnd = dayIdx === 6
-
     const isFirst = !hasPrev || isRowStart
     const isLast = !hasNext || isRowEnd
 
     return { inStreak: true, isFirst, isLast }
   }
 
-  // For weekly mode: determine band info based on qualifying weeks
-  // Highlights the entire week (Mon-Sun) if the week qualifies
-  // Connects across rows if consecutive weeks both qualify
   const getWeeklyBandInfo = (year: number, month: number, day: number, dayIdx: number): { inStreak: boolean; isFirst: boolean; isLast: boolean } => {
     const weekKey = getISOWeekKey(year, month, day)
     if (!qualifyingWeeks.has(weekKey)) {
       return { inStreak: false, isFirst: false, isLast: false }
     }
-
-    // Check if the previous week and next week also qualify
     const prevWeekDay = new Date(year, month - 1, day - 7)
     const nextWeekDay = new Date(year, month - 1, day + 7)
     const prevWeekKey = getISOWeekKey(prevWeekDay.getFullYear(), prevWeekDay.getMonth() + 1, prevWeekDay.getDate())
@@ -251,9 +287,6 @@ export default function StreakDetailScreen() {
     const prevWeekQualifies = qualifyingWeeks.has(prevWeekKey)
     const nextWeekQualifies = qualifyingWeeks.has(nextWeekKey)
 
-    // Monday (dayIdx=0) is the start of the week band
-    // Sunday (dayIdx=6) is the end of the week band
-    // If prev/next week also qualifies, don't round the edges (connect across rows)
     const isFirst = dayIdx === 0 && !prevWeekQualifies
     const isLast = dayIdx === 6 && !nextWeekQualifies
 
@@ -264,7 +297,6 @@ export default function StreakDetailScreen() {
     const daysInMonth = getDaysInMonth(calendarYear, calendarMonth)
     const firstDayOffset = getFirstDayOfWeek(calendarYear, calendarMonth)
 
-    // Build cells with prev month fill
     const prevMonth = calendarMonth === 1 ? 12 : calendarMonth - 1
     const prevYear = calendarMonth === 1 ? calendarYear - 1 : calendarYear
     const prevMonthDays = getDaysInMonth(prevYear, prevMonth)
@@ -272,15 +304,12 @@ export default function StreakDetailScreen() {
     type CellData = { day: number; year: number; month: number; isCurrentMonth: boolean }
     const cells: CellData[] = []
 
-    // Previous month trailing days
     for (let i = firstDayOffset - 1; i >= 0; i--) {
       cells.push({ day: prevMonthDays - i, year: prevYear, month: prevMonth, isCurrentMonth: false })
     }
-    // Current month days
     for (let d = 1; d <= daysInMonth; d++) {
       cells.push({ day: d, year: calendarYear, month: calendarMonth, isCurrentMonth: true })
     }
-    // Next month leading days
     const nextMonth = calendarMonth === 12 ? 1 : calendarMonth + 1
     const nextYear = calendarMonth === 12 ? calendarYear + 1 : calendarYear
     let nextDay = 1
@@ -295,7 +324,6 @@ export default function StreakDetailScreen() {
 
     return (
       <View style={styles.calendarGrid}>
-        {/* Weekday headers */}
         <View style={styles.weekdayRow}>
           {WEEKDAY_LABELS.map((label, idx) => (
             <View key={idx} style={styles.weekdayCell}>
@@ -311,9 +339,7 @@ export default function StreakDetailScreen() {
           ))}
         </View>
 
-        {/* Weeks */}
         {weeks.map((week, weekIdx) => {
-          // Determine which cells in this row have a streak band
           const bandInfos = week.map((cell, dayIdx) => {
             const dateStr = formatDateStr(cell.year, cell.month, cell.day)
             if (isWeeklyMode) {
@@ -322,7 +348,6 @@ export default function StreakDetailScreen() {
             return getDailyBandInfo(dateStr, dayIdx)
           })
 
-          // Find contiguous streak segments in this row for band rendering
           type Segment = { startIdx: number; endIdx: number }
           const segments: Segment[] = []
           let segStart = -1
@@ -338,16 +363,9 @@ export default function StreakDetailScreen() {
           }
           if (segStart !== -1) segments.push({ startIdx: segStart, endIdx: 6 })
 
-          // Determine if segment connects to prev/next row
           const segmentMeta = segments.map((seg) => {
-            const firstCell = week[seg.startIdx]
-            const lastCell = week[seg.endIdx]
-            const firstDateStr = formatDateStr(firstCell.year, firstCell.month, firstCell.day)
-            const lastDateStr = formatDateStr(lastCell.year, lastCell.month, lastCell.day)
-
             const firstInfo = bandInfos[seg.startIdx]
             const lastInfo = bandInfos[seg.endIdx]
-
             return {
               ...seg,
               roundLeft: firstInfo.isFirst,
@@ -357,7 +375,6 @@ export default function StreakDetailScreen() {
 
           return (
             <View key={weekIdx} style={styles.weekRow}>
-              {/* Band backgrounds */}
               {segmentMeta.map((seg, segIdx) => {
                 const left = seg.startIdx * CELL_SIZE
                 const width = (seg.endIdx - seg.startIdx + 1) * CELL_SIZE
@@ -385,7 +402,6 @@ export default function StreakDetailScreen() {
                 )
               })}
 
-              {/* Day cells */}
               {week.map((cell, dayIdx) => {
                 const dateStr = formatDateStr(cell.year, cell.month, cell.day)
                 const isToday = dateStr === todayStr
@@ -395,9 +411,7 @@ export default function StreakDetailScreen() {
 
                 return (
                   <View key={dayIdx} style={styles.dayCell}>
-                    {/* Today circle background */}
                     {isToday && <View style={styles.todayCircle} />}
-                    {/* Watch dot indicator */}
                     {isWatched && bandInfo.inStreak && !isToday && (
                       <View style={styles.watchDot} />
                     )}
@@ -452,6 +466,10 @@ export default function StreakDetailScreen() {
   const weeklyWatchCount = streakData?.weekly_watch_count ?? 0
   const weeklyGoal = streakData?.streak_min_days ?? 1
 
+  const currentType: StreakType = streakData?.streak_type === "weekly" ? "weekly" : "daily"
+  const currentMinDays = streakData?.streak_min_days ?? 1
+  const hasChanges = editStreakType !== currentType || (editStreakType === "weekly" && editMinDays !== currentMinDays)
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -465,70 +483,56 @@ export default function StreakDetailScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }} />
         <TouchableOpacity
-          onPress={() => {
-            const isWeeklyHelp = (streakData?.streak_type ?? "daily") !== "daily"
-            const title = "연속 기록이란?"
-            const message = isWeeklyHelp
-              ? `매주 설정한 최소 일수 이상 영화를 시청하면 연속 기록이 유지됩니다.\n\n현재 설정: 주 ${streakData?.streak_min_days ?? 1}일 이상 시청\n\n한 주라도 목표를 달성하지 못하면 연속 기록이 끊깁니다.\n\n설정 버튼에서 목표 일수를 변경할 수 있습니다.`
-              : "매일 영화를 시청하면 연속 기록이 유지됩니다.\n\n하루라도 시청하지 않으면 연속 기록이 끊깁니다.\n\n설정 버튼에서 주간 모드로 변경하면 좀 더 유연하게 연속 기록을 유지할 수 있습니다."
-            if (Platform.OS === "web") {
-              alert(`${title}\n\n${message}`)
-            } else {
-              Alert.alert(title, message, [{ text: "확인" }])
-            }
-          }}
+          onPress={() => setShowHelp(true)}
           style={styles.headerIconButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="help-circle-outline" size={24} color={COLORS.white} />
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("StreakSettings")}
-          style={styles.headerIconButton}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="options-outline" size={24} color={COLORS.white} />
-        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Page Title */}
-        <Text style={styles.pageTitle}>연속 기록</Text>
-
-        {/* Current Streak Card */}
-        <View style={styles.streakCard}>
-          <Text style={styles.streakCardLabel}>현재 연속 기록</Text>
-          <View style={styles.streakIconRow}>
-            <Ionicons name="flame" size={30} color={FIRE_COLOR} />
-            <Text style={styles.streakValue}>{currentStreak}{streakUnit}</Text>
-          </View>
+        {/* === Hero Section === */}
+        <View style={styles.heroSection}>
+          <Ionicons name="flame" size={44} color={FIRE_COLOR} />
+          <Text style={styles.heroNumber}>{currentStreak}<Text style={styles.heroUnit}>{streakUnit}</Text></Text>
+          <Text style={styles.heroLabel}>현재 연속 시청 기록</Text>
           {currentStreak > 0 && streakData?.current_streak_start && (
-            <View style={styles.dateRangeRow}>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeText}>
-                  {formatDateDisplay(streakData.current_streak_start)}
-                </Text>
-              </View>
-              <Text style={styles.dateRangeSeparator}>-</Text>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeText}>
-                  {formatDateDisplay(streakData.current_streak_end)}
-                </Text>
-              </View>
+            <Text style={styles.heroDateRange}>
+              {formatDateDisplay(streakData.current_streak_start)} ~ {formatDateDisplay(streakData.current_streak_end)}
+            </Text>
+          )}
+        </View>
+
+        {/* === Mini Stat Cards === */}
+        <View style={styles.miniCardRow}>
+          <View style={styles.miniCard}>
+            <Ionicons name="trophy" size={20} color={COLORS.gold} />
+            <Text style={styles.miniCardValue}>{longestStreak}{streakUnit}</Text>
+            <Text style={styles.miniCardLabel}>최장 기록</Text>
+          </View>
+          {isWeekly ? (
+            <View style={styles.miniCard}>
+              <Ionicons name="bar-chart-outline" size={20} color={PROGRESS_BAR_COLOR} />
+              <Text style={styles.miniCardValue}>{weeklyWatchCount}/{weeklyGoal}<Text style={styles.miniCardValueUnit}>일</Text></Text>
+              <Text style={styles.miniCardLabel}>이번 주</Text>
+            </View>
+          ) : (
+            <View style={styles.miniCard}>
+              <Ionicons name="calendar-outline" size={20} color={TODAY_COLOR} />
+              <Text style={styles.miniCardValue}>{isWeekly ? "주간" : "일간"}</Text>
+              <Text style={styles.miniCardLabel}>기록 방식</Text>
             </View>
           )}
         </View>
 
-        {/* Weekly Progress Bar (only for weekly mode) */}
+        {/* Weekly Progress Bar */}
         {isWeekly && (
-          <View style={styles.weeklyProgressCard}>
-            <Text style={styles.weeklyProgressText}>
-              이번 주에 {weeklyWatchCount}일 봤어요. (목표: {weeklyGoal}일)
-            </Text>
-            <View style={styles.weeklyProgressBarBg}>
+          <View style={styles.progressSection}>
+            <View style={styles.progressBarBg}>
               <View
                 style={[
-                  styles.weeklyProgressBarFill,
+                  styles.progressBarFill,
                   { width: `${Math.min(100, (weeklyWatchCount / weeklyGoal) * 100)}%` },
                 ]}
               />
@@ -536,82 +540,244 @@ export default function StreakDetailScreen() {
           </View>
         )}
 
-        {/* Longest Streak Card */}
-        <View style={styles.streakCard}>
-          <Text style={styles.streakCardLabel}>최장 연속 기록</Text>
-          <View style={styles.streakIconRow}>
-            <Ionicons name="trophy" size={28} color={COLORS.gold} />
-            <Text style={[styles.streakValue, { color: COLORS.gold }]}>{longestStreak}{streakUnit}</Text>
-          </View>
-          {longestStreak > 0 && streakData?.longest_streak_start && (
-            <View style={styles.dateRangeRow}>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeText}>
-                  {formatDateDisplay(streakData.longest_streak_start)}
-                </Text>
-              </View>
-              <Text style={styles.dateRangeSeparator}>-</Text>
-              <View style={styles.dateBadge}>
-                <Text style={styles.dateBadgeText}>
-                  {formatDateDisplay(streakData.longest_streak_end)}
-                </Text>
+        {/* === Tab Bar === */}
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === "calendar" && styles.tabItemActive]}
+            onPress={() => handleTabChange("calendar")}
+          >
+            <Ionicons
+              name="calendar"
+              size={18}
+              color={activeTab === "calendar" ? COLORS.gold : COLORS.mediumGray}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.tabText, activeTab === "calendar" && styles.tabTextActive]}>달력</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === "settings" && styles.tabItemActive]}
+            onPress={() => handleTabChange("settings")}
+          >
+            <Ionicons
+              name="options-outline"
+              size={18}
+              color={activeTab === "settings" ? COLORS.gold : COLORS.mediumGray}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={[styles.tabText, activeTab === "settings" && styles.tabTextActive]}>설정</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* === Tab Content === */}
+        {activeTab === "calendar" ? (
+          <View style={styles.calendarSection}>
+            <View style={styles.monthNav}>
+              <Text style={styles.monthLabel}>{formatMonthDisplay(calendarYear, calendarMonth)}</Text>
+              <View style={styles.monthNavButtons}>
+                <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavButton}>
+                  <Ionicons name="chevron-back" size={22} color={COLORS.white} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleNextMonth}
+                  style={[styles.monthNavButton, isNextMonthDisabled() && styles.monthNavButtonDisabled]}
+                  disabled={isNextMonthDisabled()}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={22}
+                    color={isNextMonthDisabled() ? COLORS.mediumGray : COLORS.white}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
-          )}
-        </View>
 
-        {/* Calendar Section Title */}
-        <View style={styles.calendarTitleRow}>
-          <Text style={styles.calendarTitle}>연속 기록 달력</Text>
-          <View style={styles.calendarTitleLine} />
-        </View>
+            {calendarLoading ? (
+              <View style={styles.calendarLoading}>
+                <ActivityIndicator size="small" color={COLORS.gold} />
+              </View>
+            ) : (
+              renderCalendar()
+            )}
 
-        {/* Calendar Section */}
-        <View style={styles.calendarSection}>
-          {/* Month navigation */}
-          <View style={styles.monthNav}>
-            <Text style={styles.monthLabel}>{formatMonthDisplay(calendarYear, calendarMonth)}</Text>
-            <View style={styles.monthNavButtons}>
-              <TouchableOpacity onPress={handlePrevMonth} style={styles.monthNavButton}>
-                <Ionicons name="chevron-back" size={22} color={COLORS.white} />
-              </TouchableOpacity>
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View style={styles.legendBand} />
+                <Text style={styles.legendText}>연속 시청</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={styles.legendToday} />
+                <Text style={styles.legendText}>오늘</Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          /* Settings Tab */
+          <View style={styles.settingsSection}>
+            {/* Streak Type */}
+            <Text style={styles.settingsLabel}>기록 방식</Text>
+            <View style={styles.segmentRow}>
               <TouchableOpacity
-                onPress={handleNextMonth}
-                style={[styles.monthNavButton, isNextMonthDisabled() && styles.monthNavButtonDisabled]}
-                disabled={isNextMonthDisabled()}
+                style={[styles.segmentButton, editStreakType === "daily" && styles.segmentButtonActive]}
+                onPress={() => setEditStreakType("daily")}
               >
                 <Ionicons
-                  name="chevron-forward"
-                  size={22}
-                  color={isNextMonthDisabled() ? COLORS.mediumGray : COLORS.white}
+                  name="today-outline"
+                  size={16}
+                  color={editStreakType === "daily" ? COLORS.darkNavy : COLORS.lightGray}
+                  style={{ marginRight: 6 }}
                 />
+                <Text style={[styles.segmentText, editStreakType === "daily" && styles.segmentTextActive]}>
+                  일간
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentButton, editStreakType === "weekly" && styles.segmentButtonActive]}
+                onPress={() => setEditStreakType("weekly")}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={16}
+                  color={editStreakType === "weekly" ? COLORS.darkNavy : COLORS.lightGray}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.segmentText, editStreakType === "weekly" && styles.segmentTextActive]}>
+                  주간
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
 
-          {calendarLoading ? (
-            <View style={styles.calendarLoading}>
-              <ActivityIndicator size="small" color={COLORS.gold} />
+            {/* Description */}
+            <View style={styles.descCard}>
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={COLORS.lightGray}
+                style={{ marginRight: 8, marginTop: 1 }}
+              />
+              <Text style={styles.descText}>
+                {editStreakType === "daily"
+                  ? "매일 영화를 시청해야 연속 기록이 유지됩니다."
+                  : "일주일에 설정한 일수 이상 시청하면 연속 기록이 유지됩니다."
+                }
+              </Text>
             </View>
-          ) : (
-            renderCalendar()
-          )}
 
-          {/* Legend */}
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={styles.legendBand} />
-              <Text style={styles.legendText}>연속 시청</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={styles.legendToday} />
-              <Text style={styles.legendText}>오늘</Text>
-            </View>
+            {/* Min Days */}
+            {editStreakType === "weekly" && (
+              <>
+                <Text style={styles.settingsLabel}>주간 최소 시청 일수</Text>
+                <View style={styles.daysGrid}>
+                  {MIN_DAYS_OPTIONS.map((num) => (
+                    <TouchableOpacity
+                      key={num}
+                      style={[styles.dayChip, editMinDays === num && styles.dayChipActive]}
+                      onPress={() => setEditMinDays(num)}
+                    >
+                      <Text style={[styles.dayChipText, editMinDays === num && styles.dayChipTextActive]}>
+                        {num}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* Save */}
+            {hasChanges && (
+              <TouchableOpacity
+                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                onPress={handleSaveSettings}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color={COLORS.darkNavy} />
+                ) : (
+                  <Text style={styles.saveButtonText}>적용</Text>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Help Bottom Sheet */}
+      <Modal
+        visible={showHelp}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowHelp(false)}
+      >
+        <Pressable style={styles.helpOverlay} onPress={() => setShowHelp(false)}>
+          <Pressable style={styles.helpSheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.helpHandle} />
+            <View style={styles.helpHeader}>
+              <Ionicons name="help-circle" size={28} color={COLORS.gold} />
+              <Text style={styles.helpTitle}>연속 기록이란?</Text>
+            </View>
+            <View style={styles.helpDivider} />
+            {(streakData?.streak_type ?? "daily") !== "daily" ? (
+              <>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    매주 {streakData?.streak_min_days ?? 1}일 이상 영화를 시청하면 연속 기록이 이어집니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    한 주라도 목표 일수를 채우지 못하면 기록이 끊기고 다시 1주차부터 시작됩니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    주(월~일) 단위로 계산되며, 어떤 요일에 보든 상관없이 일수만 채우면 됩니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    설정 탭에서 주간 최소 시청 일수를 변경할 수 있습니다.
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    하루에 영화를 1편 이상 시청하면 그 날의 기록이 인정됩니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    연속으로 매일 시청하면 기록이 계속 쌓여갑니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    하루라도 시청하지 않으면 기록이 끊기고 다시 1일차부터 시작됩니다.
+                  </Text>
+                </View>
+                <View style={styles.helpRow}>
+                  <Text style={styles.helpDot}>{'  \u2022  '}</Text>
+                  <Text style={styles.helpText}>
+                    매일 보기 어렵다면 설정 탭에서 주간 모드로 변경해보세요.
+                  </Text>
+                </View>
+              </>
+            )}
+            <TouchableOpacity style={styles.helpCloseButton} onPress={() => setShowHelp(false)}>
+              <Text style={styles.helpCloseText}>확인</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   )
 }
@@ -670,99 +836,111 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginLeft: 8,
   },
-  pageTitle: {
+
+  // === Hero ===
+  heroSection: {
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  heroNumber: {
+    fontSize: 56,
+    fontWeight: "800",
+    color: FIRE_COLOR,
+    marginTop: 4,
+  },
+  heroUnit: {
     fontSize: 28,
+    fontWeight: "600",
+  },
+  heroLabel: {
+    fontSize: 15,
+    color: COLORS.lightGray,
+    marginTop: 2,
+  },
+  heroDateRange: {
+    fontSize: 13,
+    color: COLORS.mediumGray,
+    marginTop: 8,
+  },
+
+  // === Mini Cards ===
+  miniCardRow: {
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 16,
+  },
+  miniCard: {
+    flex: 1,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: "center",
+    gap: 6,
+  },
+  miniCardValue: {
+    fontSize: 22,
     fontWeight: "bold",
     color: COLORS.white,
+  },
+  miniCardValueUnit: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  miniCardLabel: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+  },
+
+  // === Progress ===
+  progressSection: {
     paddingHorizontal: 20,
     marginBottom: 20,
   },
-  streakCard: {
-    backgroundColor: COLORS.deepGray,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    padding: 20,
-  },
-  streakCardLabel: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-    fontWeight: "500",
-    marginBottom: 8,
-  },
-  streakIconRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  streakValue: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: FIRE_COLOR,
-  },
-  dateRangeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    gap: 8,
-  },
-  dateBadge: {
-    backgroundColor: "rgba(160,160,160,0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  dateBadgeText: {
-    fontSize: 13,
-    color: COLORS.lightGray,
-    fontWeight: "500",
-  },
-  dateRangeSeparator: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-  },
-  weeklyProgressCard: {
-    backgroundColor: COLORS.deepGray,
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    padding: 20,
-  },
-  weeklyProgressText: {
-    fontSize: 15,
-    color: COLORS.white,
-    fontWeight: "500",
-    marginBottom: 12,
-  },
-  weeklyProgressBarBg: {
-    height: 8,
+  progressBarBg: {
+    height: 6,
     backgroundColor: "rgba(160,160,160,0.2)",
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
   },
-  weeklyProgressBarFill: {
+  progressBarFill: {
     height: "100%",
     backgroundColor: PROGRESS_BAR_COLOR,
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  calendarTitleRow: {
+
+  // === Tabs ===
+  tabBar: {
+    flexDirection: "row",
+    marginHorizontal: 20,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tabItem: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
-    marginTop: 16,
-    marginBottom: 16,
-    gap: 12,
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 9,
   },
-  calendarTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: COLORS.white,
+  tabItemActive: {
+    backgroundColor: "rgba(212,175,55,0.15)",
   },
-  calendarTitleLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "rgba(160,160,160,0.3)",
+  tabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.mediumGray,
   },
+  tabTextActive: {
+    color: COLORS.gold,
+  },
+
+  // === Calendar ===
   calendarSection: {
     marginHorizontal: 20,
     backgroundColor: COLORS.deepGray,
@@ -895,5 +1073,163 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 12,
     color: COLORS.lightGray,
+  },
+
+  // === Settings Tab ===
+  settingsSection: {
+    marginHorizontal: 20,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 16,
+    padding: 20,
+  },
+  settingsLabel: {
+    fontSize: 13,
+    color: COLORS.lightGray,
+    fontWeight: "500",
+    marginBottom: 10,
+  },
+  segmentRow: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 10,
+    padding: 3,
+    marginBottom: 16,
+  },
+  segmentButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  segmentButtonActive: {
+    backgroundColor: COLORS.gold,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: COLORS.lightGray,
+  },
+  segmentTextActive: {
+    color: COLORS.darkNavy,
+  },
+  descCard: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 20,
+  },
+  descText: {
+    flex: 1,
+    fontSize: 13,
+    color: COLORS.lightGray,
+    lineHeight: 19,
+  },
+  daysGrid: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 20,
+    flexWrap: "wrap",
+  },
+  dayChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dayChipActive: {
+    backgroundColor: COLORS.gold,
+  },
+  dayChipText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.lightGray,
+  },
+  dayChipTextActive: {
+    color: COLORS.darkNavy,
+  },
+  saveButton: {
+    backgroundColor: COLORS.gold,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  saveButtonDisabled: {
+    opacity: 0.4,
+  },
+  saveButtonText: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: COLORS.darkNavy,
+  },
+
+  // === Help Bottom Sheet ===
+  helpOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  helpSheet: {
+    backgroundColor: COLORS.deepGray,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 36,
+    paddingTop: 12,
+  },
+  helpHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  helpHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  helpTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: COLORS.white,
+  },
+  helpDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    marginBottom: 16,
+  },
+  helpRow: {
+    flexDirection: "row",
+    marginBottom: 12,
+  },
+  helpDot: {
+    fontSize: 14,
+    color: COLORS.gold,
+    lineHeight: 20,
+  },
+  helpText: {
+    flex: 1,
+    fontSize: 14,
+    color: COLORS.lightGray,
+    lineHeight: 20,
+  },
+  helpCloseButton: {
+    backgroundColor: COLORS.gold,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  helpCloseText: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: COLORS.darkNavy,
   },
 })

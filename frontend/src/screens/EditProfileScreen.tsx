@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
@@ -23,6 +22,7 @@ import type { RootStackParamList } from "../types"
 import { useAuth } from "../contexts/AuthContext"
 import { getCurrentUser, updateUserProfile, deleteUser } from "../services/userService"
 import api, { unwrapResponse } from "../lib/api"
+import { useAlert } from "../components/CustomAlert"
 
 type EditProfileNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
@@ -30,6 +30,7 @@ export default function EditProfileScreen() {
   const navigation = useNavigation<EditProfileNavigationProp>()
   const insets = useSafeAreaInsets()
   const { refreshUser, signOut } = useAuth()
+  const { showAlert } = useAlert()
 
   const [displayName, setDisplayName] = useState("")
   const [avatarUrl, setAvatarUrl] = useState("")
@@ -68,7 +69,7 @@ export default function EditProfileScreen() {
 
       originalValues.current = { displayName: name, avatarUrl: avatar, yearlyGoal: goal }
     } catch (error) {
-      Alert.alert("오류", "사용자 정보를 불러오지 못했습니다.", [
+      showAlert("오류", "사용자 정보를 불러오지 못했습니다.", [
         { text: "확인", onPress: () => navigation.goBack() },
       ])
     } finally {
@@ -87,13 +88,13 @@ export default function EditProfileScreen() {
   const handleSave = async () => {
     const trimmedName = displayName.trim()
     if (!trimmedName) {
-      Alert.alert("알림", "이름을 입력해주세요.")
+      showAlert("알림", "이름을 입력해주세요.")
       return
     }
 
     const goalNum = parseInt(yearlyGoal, 10)
     if (yearlyGoal.trim() && (isNaN(goalNum) || goalNum < 1 || goalNum > 999)) {
-      Alert.alert("알림", "연간 목표는 1~999 사이의 숫자를 입력해주세요.")
+      showAlert("알림", "연간 목표는 1~999 사이의 숫자를 입력해주세요.")
       return
     }
 
@@ -112,7 +113,7 @@ export default function EditProfileScreen() {
       }
       navigation.goBack()
     } catch (error) {
-      Alert.alert("오류", "프로필 수정에 실패했습니다. 다시 시도해주세요.")
+      showAlert("오류", "프로필 수정에 실패했습니다. 다시 시도해주세요.")
     } finally {
       setSaving(false)
     }
@@ -120,7 +121,7 @@ export default function EditProfileScreen() {
 
   const handleBack = () => {
     if (hasChanges()) {
-      Alert.alert("변경사항 취소", "수정한 내용이 저장되지 않습니다. 나가시겠습니까?", [
+      showAlert("변경사항 취소", "수정한 내용이 저장되지 않습니다. 나가시겠습니까?", [
         { text: "계속 수정", style: "cancel" },
         { text: "나가기", style: "destructive", onPress: () => navigation.goBack() },
       ])
@@ -132,7 +133,7 @@ export default function EditProfileScreen() {
   const handlePickAvatar = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (status !== "granted") {
-      Alert.alert("권한 필요", "사진 라이브러리 접근 권한이 필요합니다.")
+      showAlert("권한 필요", "사진 라이브러리 접근 권한이 필요합니다.")
       return
     }
 
@@ -172,7 +173,7 @@ export default function EditProfileScreen() {
       setAvatarUrl(file_url)
     } catch (error) {
       console.error("아바타 업로드 실패:", error)
-      Alert.alert("오류", "이미지 업로드에 실패했습니다.")
+      showAlert("오류", "이미지 업로드에 실패했습니다.")
     } finally {
       setUploadingAvatar(false)
     }
@@ -184,11 +185,11 @@ export default function EditProfileScreen() {
       setIsDeleting(true)
       await deleteUser()
       setShowDeleteModal(false)
-      Alert.alert("탈퇴 완료", "회원 탈퇴가 완료되었습니다.", [
+      showAlert("탈퇴 완료", "회원 탈퇴가 완료되었습니다.", [
         { text: "확인", onPress: () => signOut() },
       ])
     } catch (error) {
-      Alert.alert("오류", "회원 탈퇴에 실패했습니다. 다시 시도해주세요.")
+      showAlert("오류", "회원 탈퇴에 실패했습니다. 다시 시도해주세요.")
     } finally {
       setIsDeleting(false)
     }

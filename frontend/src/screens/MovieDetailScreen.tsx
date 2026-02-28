@@ -8,8 +8,6 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
-  Platform,
   Modal,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
@@ -19,6 +17,7 @@ import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 import { getMovieDetail, updateMovie, deleteMovie } from "../services/movieService"
 import { getTags, createTag, addTagToMovie, removeTagFromMovie } from "../services/tagService"
+import { useAlert } from "../components/CustomAlert"
 
 type MovieDetailScreenProps = NativeStackScreenProps<RootStackParamList, "MovieDetail">
 type MovieStatus = "watching" | "completed" | "watchlist"
@@ -37,6 +36,7 @@ const STATUS_CARD_THEME = {
 
 export default function MovieDetailScreen({ route, navigation }: MovieDetailScreenProps) {
   const { id } = route.params
+  const { showAlert } = useAlert()
 
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -89,7 +89,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setAllTags(tagsData)
     } catch (error) {
       console.error("MovieDetailScreen 데이터 로드 실패:", error)
-      Alert.alert("오류", "영화 정보를 불러오지 못했습니다.")
+      showAlert("오류", "영화 정보를 불러오지 못했습니다.")
       navigation.goBack()
     } finally {
       setLoading(false)
@@ -138,7 +138,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         return true
       } catch (error) {
         console.error("상태 저장 실패:", error)
-        if (!options?.silent) Alert.alert("오류", "상태 변경 저장에 실패했습니다.")
+        if (!options?.silent) showAlert("오류", "상태 변경 저장에 실패했습니다.")
         return false
       } finally {
         setIsSaving(false)
@@ -152,11 +152,11 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     try {
       setIsDeleting(true)
       await deleteMovie(id)
-      Alert.alert("삭제 완료", "영화가 삭제되었습니다.")
+      showAlert("삭제 완료", "영화가 삭제되었습니다.")
       navigation.goBack()
     } catch (error) {
       console.error("영화 삭제 실패:", error)
-      Alert.alert("오류", "삭제에 실패했습니다.")
+      showAlert("오류", "삭제에 실패했습니다.")
     } finally {
       setIsDeleting(false)
     }
@@ -166,14 +166,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     if (isDeleting) return
     setShowActionMenu(false)
 
-    if (Platform.OS === "web") {
-      const confirmed = typeof globalThis.confirm === "function" ? globalThis.confirm("정말 이 영화를 삭제하시겠습니까?") : false
-      if (!confirmed) return
-      void executeDelete()
-      return
-    }
-
-    Alert.alert("영화 삭제", "정말 이 영화를 삭제하시겠습니까?", [
+    showAlert("영화 삭제", "정말 이 영화를 삭제하시겠습니까?", [
       { text: "취소", style: "cancel" },
       { text: "삭제", style: "destructive", onPress: () => void executeDelete() },
     ])
@@ -190,7 +183,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     } catch (error) {
       console.error("태그 추가 실패:", error)
       setMovieTags((prev) => prev.filter((tag) => tag.id !== tagId))
-      Alert.alert("오류", "태그 추가에 실패했습니다.")
+      showAlert("오류", "태그 추가에 실패했습니다.")
     }
   }
 
@@ -202,7 +195,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     } catch (error) {
       console.error("태그 삭제 실패:", error)
       if (removedTag) setMovieTags((prev) => [...prev, removedTag])
-      Alert.alert("오류", "태그 삭제에 실패했습니다.")
+      showAlert("오류", "태그 삭제에 실패했습니다.")
     }
   }
   const getStarIconName = (value: number, star: number) => {
@@ -218,7 +211,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     const ok = await persistStatus("completed", { rating: normalized, review, silent: true })
     if (!ok) {
       setRating(prevRating)
-      Alert.alert("오류", "별점 저장에 실패했습니다.")
+      showAlert("오류", "별점 저장에 실패했습니다.")
     }
   }
 
@@ -239,7 +232,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     } catch (error) {
       console.error("인생 영화 토글 실패:", error)
       setIsBestMovie(!nextValue)
-      Alert.alert("오류", "인생 영화 설정에 실패했습니다.")
+      showAlert("오류", "인생 영화 설정에 실패했습니다.")
     } finally {
       setIsSaving(false)
     }
@@ -254,12 +247,12 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
   const handleSaveProgress = async () => {
     const minutes = parseInt(pendingProgress, 10)
     if (pendingProgress.trim() && (isNaN(minutes) || minutes < 0)) {
-      Alert.alert("알림", "올바른 시청 시간(분)을 입력해주세요.")
+      showAlert("알림", "올바른 시청 시간(분)을 입력해주세요.")
       return
     }
     const runtimeVal = parseInt(pendingRuntime, 10)
     if (pendingRuntime.trim() && (isNaN(runtimeVal) || runtimeVal < 0)) {
-      Alert.alert("알림", "올바른 상영 시간(분)을 입력해주세요.")
+      showAlert("알림", "올바른 상영 시간(분)을 입력해주세요.")
       return
     }
     setShowProgressModal(false)
@@ -272,7 +265,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setMovie(updatedMovie)
     } catch (error) {
       console.error("진행 시간 저장 실패:", error)
-      Alert.alert("오류", "진행 시간 저장에 실패했습니다.")
+      showAlert("오류", "진행 시간 저장에 실패했습니다.")
     } finally {
       setIsSaving(false)
     }
@@ -294,7 +287,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
     } catch (error) {
       console.error("장르 저장 실패:", error)
       setGenreList(movie?.genre ? movie.genre.split(",").map((g: string) => g.trim()).filter(Boolean) : [])
-      Alert.alert("오류", "장르 저장에 실패했습니다.")
+      showAlert("오류", "장르 저장에 실패했습니다.")
     } finally {
       setIsSaving(false)
     }
@@ -345,7 +338,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       await addTagToMovie(id, newTag.id)
     } catch (error) {
       console.error("태그 생성 실패:", error)
-      Alert.alert("오류", "태그 생성에 실패했습니다.")
+      showAlert("오류", "태그 생성에 실패했습니다.")
     } finally {
       setIsSaving(false)
     }
@@ -439,7 +432,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setStatus(prev.status)
       setRating(prev.rating)
       setReview(prev.review)
-      Alert.alert("오류", "시작일 저장에 실패했습니다.")
+      showAlert("오류", "시작일 저장에 실패했습니다.")
     }
   }
 
@@ -466,7 +459,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setStatus(prev.status)
       setRating(prev.rating)
       setReview(prev.review)
-      Alert.alert("오류", "시청 완료 저장에 실패했습니다.")
+      showAlert("오류", "시청 완료 저장에 실패했습니다.")
     }
   }
 
@@ -482,7 +475,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setStatus(prev.status)
       setRating(prev.rating)
       setReview(prev.review)
-      Alert.alert("오류", "상태 변경 저장에 실패했습니다.")
+      showAlert("오류", "상태 변경 저장에 실패했습니다.")
     }
   }
   const formatKoreanDate = (value?: string | Date | null) => {

@@ -5,6 +5,7 @@
 /issues
 /.omc
 /.omx
+.codex/
 
 .claude/
 CLAUDE.md

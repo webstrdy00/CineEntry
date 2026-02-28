@@ -5,7 +5,6 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
@@ -17,6 +16,7 @@ import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 import { getStreakData, updateStreakSettings } from "../services/statsService"
 import type { StreakData } from "../services/statsService"
+import { useAlert } from "../components/CustomAlert"
 
 type StreakSettingsNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
@@ -32,6 +32,7 @@ const MIN_DAYS_OPTIONS = [1, 2, 3, 4, 5, 6, 7]
 export default function StreakSettingsScreen() {
   const navigation = useNavigation<StreakSettingsNavigationProp>()
   const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
 
   const [streakType, setStreakType] = useState<StreakType>("daily")
   const [minDays, setMinDays] = useState(1)
@@ -68,7 +69,7 @@ export default function StreakSettingsScreen() {
       })
       navigation.goBack()
     } catch (err) {
-      Alert.alert("오류", "설정 저장에 실패했습니다. 다시 시도해주세요.")
+      showAlert("오류", "설정 저장에 실패했습니다. 다시 시도해주세요.")
     } finally {
       setSaving(false)
     }

@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, RefreshControl, Linking } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Linking } from "react-native"
+import { useAlert } from "../components/CustomAlert"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -17,6 +18,7 @@ export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>()
   const insets = useSafeAreaInsets()
   const { signOut, user: authUser } = useAuth()
+  const { showAlert } = useAlert()
 
   // State
   const [loading, setLoading] = useState(true)
@@ -57,7 +59,7 @@ export default function ProfileScreen() {
   }, [])
 
   const handleLogout = () => {
-    Alert.alert(
+    showAlert(
       '로그아웃',
       '정말 로그아웃 하시겠습니까?',
       [
@@ -105,7 +107,7 @@ export default function ProfileScreen() {
     help: () => navigation.navigate("Help"),
     contact: () => {
       Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 문의/버그 신고").catch(() =>
-        Alert.alert("알림", "메일 앱을 열 수 없습니다.\nfilmory.app@gmail.com으로 문의해 주세요.")
+        showAlert("알림", "메일 앱을 열 수 없습니다.\nfilmory.app@gmail.com으로 문의해 주세요.")
       )
     },
     terms: () => navigation.navigate("Terms"),
@@ -141,7 +143,7 @@ export default function ProfileScreen() {
               if (isImplemented) {
                 implementedActions[item.action]()
               } else {
-                Alert.alert("준비 중", "이 기능은 곧 추가될 예정입니다.")
+                showAlert("준비 중", "이 기능은 곧 추가될 예정입니다.")
               }
             }}
           >

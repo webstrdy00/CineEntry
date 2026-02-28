@@ -5,12 +5,12 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
+import { useAlert } from '../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/colors';
@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const SignUpScreen = ({ navigation }: any) => {
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAlert();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,17 +30,17 @@ const SignUpScreen = ({ navigation }: any) => {
   const handleSignUp = async () => {
     // Validation
     if (!email || !password || !confirmPassword || !displayName) {
-      Alert.alert('오류', '모든 항목을 입력해주세요.');
+      showAlert('오류', '모든 항목을 입력해주세요.');
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert('오류', '비밀번호가 일치하지 않습니다.');
+      showAlert('오류', '비밀번호가 일치하지 않습니다.');
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert('오류', '비밀번호는 최소 6자 이상이어야 합니다.');
+      showAlert('오류', '비밀번호는 최소 6자 이상이어야 합니다.');
       return;
     }
 
@@ -57,7 +58,7 @@ const SignUpScreen = ({ navigation }: any) => {
       // AuthContext 업데이트 (자동 로그인)
       setUser(result.user);
 
-      Alert.alert('회원가입 완료!', 'Filmory에 오신 것을 환영합니다.');
+      showAlert('회원가입 완료!', 'Filmory에 오신 것을 환영합니다.');
     } catch (error: any) {
       console.error('❌ 회원가입 실패:', error);
 
@@ -66,7 +67,7 @@ const SignUpScreen = ({ navigation }: any) => {
         error.message ||
         '회원가입에 실패했습니다.';
 
-      Alert.alert('회원가입 실패', message);
+      showAlert('회원가입 실패', message);
     } finally {
       setLoading(false);
     }

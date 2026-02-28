@@ -8,9 +8,9 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from "react-native"
+import { useAlert } from "../components/CustomAlert"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -119,6 +119,7 @@ const createDraftFromItem = (movie: MovieSearchItem): MovieDraft => ({
 export default function MovieSearchScreen() {
   const navigation = useNavigation<MovieSearchScreenNavigationProp>()
   const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
 
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<MovieSearchItem[]>([])
@@ -236,7 +237,7 @@ export default function MovieSearchScreen() {
       setAllTags(tags)
     } catch (error) {
       console.error("태그 목록 조회 실패:", error)
-      Alert.alert("안내", "태그 목록을 불러오지 못했어요. 태그 없이 추가는 가능합니다.")
+      showAlert("안내", "태그 목록을 불러오지 못했어요. 태그 없이 추가는 가능합니다.")
     } finally {
       setLoadingTags(false)
     }
@@ -283,7 +284,7 @@ export default function MovieSearchScreen() {
 
     const title = draft.title.trim()
     if (!title) {
-      Alert.alert("입력 확인", "영화 제목을 입력해 주세요.")
+      showAlert("입력 확인", "영화 제목을 입력해 주세요.")
       return
     }
 
@@ -337,9 +338,9 @@ export default function MovieSearchScreen() {
       handleBackFromEditor(true)
 
       if (failedTagCount > 0) {
-        Alert.alert("일부 저장됨", `영화는 추가했지만 태그 ${failedTagCount}개 추가에 실패했어요.`)
+        showAlert("일부 저장됨", `영화는 추가했지만 태그 ${failedTagCount}개 추가에 실패했어요.`)
       } else {
-        Alert.alert("추가 완료", "보고 싶은 영화에 추가했어요.")
+        showAlert("추가 완료", "보고 싶은 영화에 추가했어요.")
       }
     } catch (error: any) {
       console.error("영화 추가 실패:", error)
@@ -350,7 +351,7 @@ export default function MovieSearchScreen() {
         handleBackFromEditor(true)
         showAlreadyAddedNotice()
       } else {
-        Alert.alert("오류", "영화 추가에 실패했습니다.")
+        showAlert("오류", "영화 추가에 실패했습니다.")
       }
     } finally {
       setIsSaving(false)

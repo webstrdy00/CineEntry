@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback } from "react"
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  Alert,
   Dimensions,
   Platform,
 } from "react-native"
@@ -18,13 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { COLORS } from "../constants/colors"
 import { getCalendarData } from "../services/statsService"
 import type { CalendarData, CalendarDay, RootStackParamList } from "../types"
+import CalendarDownloadModal from "../components/CalendarDownloadModal"
 
 // Optional packages - gracefully handle if not installed
-let ViewShot: any = null
-let MediaLibrary: any = null
 let AsyncStorage: any = null
-try { ViewShot = require("react-native-view-shot").default } catch (_) {}
-try { MediaLibrary = require("expo-media-library") } catch (_) {}
 try { AsyncStorage = require("@react-native-async-storage/async-storage").default } catch (_) {}
 
 type PosterMode = "single" | "split"
@@ -56,14 +52,13 @@ const DAY_LABELS_SUNDAY = ["일", "월", "화", "수", "목", "금", "토"]
 export default function WatchCalendarScreen() {
   const navigation = useNavigation<WatchCalendarNavigationProp>()
   const insets = useSafeAreaInsets()
-  const viewShotRef = useRef<any>(null)
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1) // 1-based
   const [calendarData, setCalendarData] = useState<CalendarData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [posterMode, setPosterMode] = useState<PosterMode>("single")
   const [weekStart, setWeekStart] = useState<WeekStart>("monday")
 
@@ -122,27 +117,8 @@ export default function WatchCalendarScreen() {
     }
   }
 
-  const handleDownload = async () => {
-    if (!ViewShot || !MediaLibrary) {
-      Alert.alert("안내", "이미지 저장 기능은 추가 패키지 설치 후 이용 가능합니다.\n(react-native-view-shot, expo-media-library)")
-      return
-    }
-    try {
-      const { status } = await MediaLibrary.requestPermissionsAsync()
-      if (status !== "granted") {
-        Alert.alert("권한 필요", "이미지를 저장하려면 갤러리 접근 권한이 필요합니다.")
-        return
-      }
-      setSaving(true)
-      const uri = await (viewShotRef.current as any).capture()
-      await MediaLibrary.saveToLibraryAsync(uri)
-      Alert.alert("저장 완료", "달력 이미지가 저장되었습니다.")
-    } catch (error) {
-      console.error("❌ 이미지 저장 실패:", error)
-      Alert.alert("오류", "이미지 저장에 실패했습니다.")
-    } finally {
-      setSaving(false)
-    }
+  const handleDownload = () => {
+    setShowDownloadModal(true)
   }
 
   // Build calendar grid
@@ -202,12 +178,8 @@ export default function WatchCalendarScreen() {
         <TouchableOpacity onPress={() => navigation.navigate("WatchCalendarSettings")} style={styles.headerIconButton}>
           <Ionicons name="options-outline" size={22} color={COLORS.white} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleDownload} style={styles.headerIconButton} disabled={saving}>
-          {saving ? (
-            <ActivityIndicator size="small" color={COLORS.gold} />
-          ) : (
-            <Ionicons name="download-outline" size={22} color={COLORS.white} />
-          )}
+        <TouchableOpacity onPress={handleDownload} style={styles.headerIconButton}>
+          <Ionicons name="download-outline" size={22} color={COLORS.white} />
         </TouchableOpacity>
       </View>
 
@@ -218,8 +190,8 @@ export default function WatchCalendarScreen() {
           <Text style={styles.pageSubtitle}>이번 달은 얼마나 보셨나요?</Text>
         </View>
 
-        {/* Calendar wrapper - ViewShot used for image capture if available */}
-        <View ref={ViewShot ? viewShotRef : undefined} style={styles.calendarWrapper}>
+        {/* Calendar wrapper */}
+        <View style={styles.calendarWrapper}>
             {/* Month Navigation */}
             <View style={styles.monthNav}>
               <Text style={styles.monthTitle}>
@@ -461,6 +433,16 @@ export default function WatchCalendarScreen() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      <CalendarDownloadModal
+        visible={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
+        calendarData={calendarData}
+        year={year}
+        month={month}
+        posterMode={posterMode}
+        weekStart={weekStart}
+      />
     </View>
   )
 }

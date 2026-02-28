@@ -170,7 +170,6 @@ export type RootStackParamList = {
   Terms: undefined
   Privacy: undefined
   StreakDetail: undefined
-  StreakSettings: undefined
   WatchCalendar: undefined
   WatchCalendarSettings: undefined
 }

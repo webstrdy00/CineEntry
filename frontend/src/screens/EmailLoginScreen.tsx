@@ -5,11 +5,11 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useAlert } from '../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/colors';
@@ -18,6 +18,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const EmailLoginScreen = ({ navigation }: any) => {
   const insets = useSafeAreaInsets();
+  const { showAlert } = useAlert();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('오류', '이메일과 비밀번호를 입력해주세요.');
+      showAlert('오류', '이메일과 비밀번호를 입력해주세요.');
       return;
     }
 
@@ -46,7 +47,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
         error.message ||
         '로그인에 실패했습니다.';
 
-      Alert.alert('로그인 실패', message);
+      showAlert('로그인 실패', message);
     } finally {
       setLoading(false);
     }

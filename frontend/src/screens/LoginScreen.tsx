@@ -4,9 +4,9 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
+import { useAlert } from '../components/CustomAlert';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import { Platform } from 'react-native';
@@ -16,6 +16,7 @@ import { getGoogleAuthUrl, getKakaoAuthUrl } from '../services/authService';
 WebBrowser.maybeCompleteAuthSession();
 
 const LoginScreen = ({ navigation }: any) => {
+  const { showAlert } = useAlert();
   const [loading, setLoading] = useState(false);
 
   // Google 로그인
@@ -42,7 +43,7 @@ const LoginScreen = ({ navigation }: any) => {
       }
     } catch (error: any) {
       console.error('❌ Google 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message || 'Google 로그인에 실패했습니다.');
+      showAlert('로그인 실패', error.message || 'Google 로그인에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -71,7 +72,7 @@ const LoginScreen = ({ navigation }: any) => {
       }
     } catch (error: any) {
       console.error('❌ Kakao 로그인 실패:', error.message);
-      Alert.alert('로그인 실패', error.message || 'Kakao 로그인에 실패했습니다.');
+      showAlert('로그인 실패', error.message || 'Kakao 로그인에 실패했습니다.');
     } finally {
       setLoading(false);
     }

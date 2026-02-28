@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 import { createCollection } from '../services/collectionService';
+import { useAlert } from './CustomAlert';
 
 interface CreateCollectionModalProps {
   visible: boolean;
@@ -26,6 +26,7 @@ const CreateCollectionModal: React.FC<CreateCollectionModalProps> = ({
   onClose,
   onCreated,
 }) => {
+  const { showAlert } = useAlert();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,7 +51,7 @@ const CreateCollectionModal: React.FC<CreateCollectionModalProps> = ({
       onCreated();
       onClose();
     } catch (error: any) {
-      Alert.alert('오류', error?.message || '컬렉션을 만들지 못했습니다. 다시 시도해주세요.');
+      showAlert('오류', error?.message || '컬렉션을 만들지 못했습니다. 다시 시도해주세요.');
     } finally {
       setLoading(false);
     }
