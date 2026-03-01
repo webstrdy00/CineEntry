@@ -24,8 +24,8 @@ type PosterMode = "single" | "split"
 type WeekStart = "monday" | "sunday"
 
 const STORAGE_KEYS = {
-  posterMode: "@filmory/calendar_poster_mode",
-  weekStart: "@filmory/calendar_week_start",
+  posterMode: "@cineentry/calendar_poster_mode",
+  weekStart: "@cineentry/calendar_week_start",
 }
 
 async function loadStorage(key: string): Promise<string | null> {

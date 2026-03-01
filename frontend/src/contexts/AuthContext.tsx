@@ -135,8 +135,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const url = window.location.href;
       if (url.includes('/auth/') && url.includes('code=')) {
         handleDeepLink(url).then(() => {
-          // URL에서 파라미터 제거
-          window.history.replaceState({}, document.title, window.location.pathname);
+          // OAuth 콜백 처리 후 콜백 경로를 제거하고 루트로 정리
+          window.history.replaceState({}, document.title, '/');
         });
       }
     }

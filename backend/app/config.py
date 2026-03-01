@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """
 
     # Application
-    APP_NAME: str = "Filmory API"
+    APP_NAME: str = "CineEntry API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     FRONTEND_URL: str = "http://localhost:8081"  # 프론트엔드 URL (OAuth 콜백용)

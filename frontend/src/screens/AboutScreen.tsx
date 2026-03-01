@@ -70,7 +70,7 @@ export default function AboutScreen() {
         <View style={styles.logoContainer}>
           <Ionicons name="film" size={48} color={COLORS.gold} />
         </View>
-        <Text style={styles.appName}>Filmory</Text>
+        <Text style={styles.appName}>CineEntry</Text>
         <Text style={styles.tagline}>나만의 영화 기록 앱</Text>
         <View style={styles.versionBadge}>
           <Text style={styles.versionText}>v{APP_VERSION}</Text>
@@ -124,7 +124,7 @@ export default function AboutScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>앱 정보</Text>
         <View style={styles.infoCard}>
-          <InfoRow label="앱 이름" value="Filmory" />
+          <InfoRow label="앱 이름" value="CineEntry" />
           <View style={styles.infoDivider} />
           <InfoRow label="버전" value={`${APP_VERSION} (${BUILD_NUMBER})`} />
         </View>
@@ -166,7 +166,7 @@ export default function AboutScreen() {
       <View style={styles.footerArea}>
         <Ionicons name="film-outline" size={20} color={COLORS.lightGray} style={{ opacity: 0.4 }} />
         <Text style={styles.footerText}>
-          {`\u00A9 ${new Date().getFullYear()} Filmory. All rights reserved.`}
+          {`\u00A9 ${new Date().getFullYear()} CineEntry. All rights reserved.`}
         </Text>
         <Text style={styles.footerSubtext}>Made with love for movie lovers</Text>
       </View>

@@ -37,8 +37,8 @@ const api = axios.create({
 // ===========================
 // Token Storage Keys
 // ===========================
-const ACCESS_TOKEN_KEY = 'filmory_access_token';
-const REFRESH_TOKEN_KEY = 'filmory_refresh_token';
+const ACCESS_TOKEN_KEY = 'cineentry_access_token';
+const REFRESH_TOKEN_KEY = 'cineentry_refresh_token';
 
 // ===========================
 // Token Helpers

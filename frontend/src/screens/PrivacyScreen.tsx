@@ -69,7 +69,7 @@ export default function PrivacyScreen() {
       <View style={styles.content}>
         <Text style={styles.effectiveDate}>시행일: {EFFECTIVE_DATE}</Text>
 
-        <P>Filmory(이하 "앱")는 「개인정보 보호법」에 따라 이용자의 개인정보를 보호하고 이와 관련한 고충을 원활하게 처리할 수 있도록 다음과 같은 처리방침을 수립하여 공개합니다.</P>
+        <P>CineEntry(이하 "앱")는 「개인정보 보호법」에 따라 이용자의 개인정보를 보호하고 이와 관련한 고충을 원활하게 처리할 수 있도록 다음과 같은 처리방침을 수립하여 공개합니다.</P>
 
         <Section number="1" title="수집하는 개인정보 항목 및 수집 방법">
           <P>앱은 서비스 제공을 위해 다음의 개인정보를 수집합니다.</P>
@@ -130,7 +130,7 @@ export default function PrivacyScreen() {
           <Li>개인정보 수정 요구</Li>
           <Li>개인정보 삭제 요구</Li>
           <Li>개인정보 처리 정지 요구</Li>
-          <P>위 권리는 앱 내 프로필 수정 기능 또는 이메일(filmory.app@gmail.com)을 통해 행사할 수 있으며, 앱은 이에 대해 지체 없이 조치하겠습니다.</P>
+          <P>위 권리는 앱 내 프로필 수정 기능 또는 이메일(cineentry.app@gmail.com)을 통해 행사할 수 있으며, 앱은 이에 대해 지체 없이 조치하겠습니다.</P>
         </Section>
 
         <Section number="7" title="개인정보의 파기 절차 및 방법">
@@ -149,8 +149,8 @@ export default function PrivacyScreen() {
 
         <Section number="9" title="개인정보 보호책임자">
           <View style={styles.table}>
-            <TableRow label="담당" value="Filmory 개발팀" />
-            <TableRow label="이메일" value="filmory.app@gmail.com" />
+            <TableRow label="담당" value="CineEntry 개발팀" />
+            <TableRow label="이메일" value="cineentry.app@gmail.com" />
           </View>
           <P>이용자는 서비스 이용 중 발생하는 모든 개인정보 관련 문의, 불만, 피해구제 등을 위 연락처로 문의할 수 있습니다.</P>
         </Section>

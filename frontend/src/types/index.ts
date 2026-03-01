@@ -1,5 +1,5 @@
 /**
- * TypeScript Type Definitions for Filmory App
+ * TypeScript Type Definitions for CineEntry App
  *
  * 모든 데이터 모델과 인터페이스 정의
  */

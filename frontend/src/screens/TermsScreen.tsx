@@ -61,7 +61,7 @@ export default function TermsScreen() {
         <Text style={styles.effectiveDate}>시행일: {EFFECTIVE_DATE}</Text>
 
         <Section number="1" title="목적">
-          <P>이 약관은 Filmory(이하 "앱")가 제공하는 영화 기록 및 관리 서비스(이하 "서비스")의 이용 조건과 절차, 이용자와 앱 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</P>
+          <P>이 약관은 CineEntry(이하 "앱")가 제공하는 영화 기록 및 관리 서비스(이하 "서비스")의 이용 조건과 절차, 이용자와 앱 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.</P>
         </Section>
 
         <Section number="2" title="정의">

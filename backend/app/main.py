@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Filmory API",
+    title="CineEntry API",
     description="Movie tracking app API with self-hosted JWT authentication",
     version="1.0.0",
     docs_url="/docs",
@@ -41,7 +41,7 @@ app.add_middleware(
 async def root():
     """Root endpoint"""
     return {
-        "message": "Filmory API is running",
+        "message": "CineEntry API is running",
         "version": "1.0.0",
         "architecture": "Self-hosted JWT + PostgreSQL",
     }
@@ -50,7 +50,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "filmory-api"}
+    return {"status": "healthy", "service": "cineentry-api"}
 
 
 # API 라우터 등록

@@ -1,23 +1,23 @@
 {
   "expo": {
-    "name": "Filmory",
-    "slug": "filmory",
+    "name": "CineEntry",
+    "slug": "cineentry",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "scheme": "filmory",
+    "scheme": "cineentry",
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.filmory.app",
+      "bundleIdentifier": "com.cineentry.app",
       "associatedDomains": [
         "applinks:owblpingqcelupohuspg.supabase.co"
       ]
     },
     "android": {
-      "package": "com.filmory.app",
+      "package": "com.cineentry.app",
       "intentFilters": [
         {
           "action": "VIEW",

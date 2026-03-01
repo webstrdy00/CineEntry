@@ -1,5 +1,5 @@
 /**
- * Color Theme for Filmory App
+ * Color Theme for CineEntry App
  *
  * 모든 화면에서 일관된 색상을 사용하기 위한 중앙 집중식 색상 정의
  */

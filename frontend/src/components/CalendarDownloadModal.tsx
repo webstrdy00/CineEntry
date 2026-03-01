@@ -200,7 +200,7 @@ export default function CalendarDownloadModal({
         return
       }
 
-      const filename = `filmory_${year}${String(month).padStart(2, "0")}.png`
+      const filename = `cineentry_${year}${String(month).padStart(2, "0")}.png`
       const shareUri = `${FileSystem.cacheDirectory}${filename}`
       await FileSystem.copyAsync({ from: uri, to: shareUri })
 
@@ -264,7 +264,7 @@ export default function CalendarDownloadModal({
               <View style={styles.logoArea}>
                 <View style={styles.logoRow}>
                   <Ionicons name="film" size={18} color={COLORS.gold} />
-                  <Text style={[styles.logoText, { color: bg.textColor }]}>Filmory</Text>
+                  <Text style={[styles.logoText, { color: bg.textColor }]}>CineEntry</Text>
                 </View>
                 <Text style={[styles.logoSubtext, { color: subtextColor }]}>
                   나만의 영화 기록

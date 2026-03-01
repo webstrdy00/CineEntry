@@ -46,8 +46,8 @@ export interface LoginRequest {
 // Token Storage
 // ===========================
 
-const ACCESS_TOKEN_KEY = 'filmory_access_token';
-const REFRESH_TOKEN_KEY = 'filmory_refresh_token';
+const ACCESS_TOKEN_KEY = 'cineentry_access_token';
+const REFRESH_TOKEN_KEY = 'cineentry_refresh_token';
 const AUTH_BASE = '/api/v1/auth';
 
 /**

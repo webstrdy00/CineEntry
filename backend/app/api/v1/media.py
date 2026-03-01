@@ -60,7 +60,7 @@ async def get_upload_url(
         result = s3_service.generate_presigned_url(
             file_name=request.file_name,
             file_type=request.file_type,
-            folder="filmory/user-images",
+            folder="cineentry/user-images",
             expiration=900  # 15분
         )
 
@@ -189,8 +189,8 @@ async def delete_user_image(
         )
 
     # S3에서 파일 삭제 시도 (file_key 추출)
-    # file_url 예시: https://bucket.s3.region.amazonaws.com/filmory/user-images/abc123.jpg
-    # file_key 추출: filmory/user-images/abc123.jpg
+    # file_url 예시: https://bucket.s3.region.amazonaws.com/cineentry/user-images/abc123.jpg
+    # file_key 추출: cineentry/user-images/abc123.jpg
     try:
         if "amazonaws.com/" in image.image_url:
             file_key = image.image_url.split("amazonaws.com/")[1]

@@ -68,7 +68,7 @@ const EmailLoginScreen = ({ navigation }: any) => {
         </TouchableOpacity>
 
         <Text style={styles.title}>이메일로 로그인</Text>
-        <Text style={styles.subtitle}>Filmory 계정으로 로그인하세요</Text>
+        <Text style={styles.subtitle}>CineEntry 계정으로 로그인하세요</Text>
 
         <View style={styles.form}>
           <TextInput

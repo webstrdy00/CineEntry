@@ -1,4 +1,4 @@
-# Filmory Backend API
+# CineEntry Backend API
 
 FastAPI 기반의 영화 기록 앱 백엔드 API
 
@@ -110,7 +110,7 @@ cp .env.example .env
 **.env 필수 항목:**
 
 ```env
-DATABASE_URL=postgresql://filmory_user:filmory_password@localhost:5432/filmory_db
+DATABASE_URL=postgresql://cineentry_user:cineentry_password@localhost:5432/cineentry_db
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_JWKS_URL=https://your-project.supabase.co/.well-known/jwks.json
 ```
@@ -122,10 +122,10 @@ SUPABASE_JWKS_URL=https://your-project.supabase.co/.well-known/jwks.json
 docker-compose up -d
 
 # 상태 확인
-docker ps | grep filmory
+docker ps | grep cineentry
 
 # PostgreSQL 연결 테스트
-docker exec filmory-postgres psql -U filmory_user -d filmory_db -c "\dt"
+docker exec cineentry-postgres psql -U cineentry_user -d cineentry_db -c "\dt"
 ```
 
 ### 3. Python 가상환경 및 패키지 설치
@@ -153,7 +153,7 @@ alembic revision --autogenerate -m "initial_schema"
 alembic upgrade head
 
 # 테이블 생성 확인
-docker exec filmory-postgres psql -U filmory_user -d filmory_db -c "\dt"
+docker exec cineentry-postgres psql -U cineentry_user -d cineentry_db -c "\dt"
 ```
 
 ### 5. FastAPI 서버 실행
@@ -172,7 +172,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 
 1. https://supabase.com 접속 및 로그인
 2. "New Project" 클릭
-3. 프로젝트 이름: `filmory` 입력
+3. 프로젝트 이름: `cineentry` 입력
 4. Database Password 설정 (저장 필수)
 5. Region 선택: `Northeast Asia (Seoul)`
 6. "Create new project" 클릭
@@ -395,10 +395,10 @@ Redis 캐싱으로 API 요청 최소화 (24시간)
 
 ```bash
 # 컨테이너 상태 확인
-docker ps -a | grep filmory-postgres
+docker ps -a | grep cineentry-postgres
 
 # 로그 확인
-docker logs filmory-postgres
+docker logs cineentry-postgres
 
 # 재시작
 docker-compose restart postgres
@@ -437,5 +437,5 @@ MIT
 
 ---
 
-**Contact**: Filmory Team
+**Contact**: CineEntry Team
 **Documentation**: `/docs/`

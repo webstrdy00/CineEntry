@@ -111,8 +111,8 @@ export default function ProfileScreen() {
     about: () => navigation.navigate("About"),
     help: () => navigation.navigate("Help"),
     contact: () => {
-      Linking.openURL("mailto:filmory.app@gmail.com?subject=[Filmory] 문의/버그 신고").catch(() =>
-        showAlert("알림", "메일 앱을 열 수 없습니다.\nfilmory.app@gmail.com으로 문의해 주세요.")
+      Linking.openURL("mailto:cineentry.app@gmail.com?subject=[CineEntry] 문의/버그 신고").catch(() =>
+        showAlert("알림", "메일 앱을 열 수 없습니다.\ncineentry.app@gmail.com으로 문의해 주세요.")
       )
     },
     terms: () => navigation.navigate("Terms"),
@@ -128,7 +128,7 @@ export default function ProfileScreen() {
 
   const supportMenu: Array<{ icon: IoniconName; label: string; action: string; subtitle?: string }> = [
     { icon: "help-circle-outline", label: "도움말", action: "help" },
-    { icon: "mail-outline", label: "사용 문의 및 버그 신고", action: "contact", subtitle: "filmory.app@gmail.com" },
+    { icon: "mail-outline", label: "사용 문의 및 버그 신고", action: "contact", subtitle: "cineentry.app@gmail.com" },
   ]
 
   const etcMenu: Array<{ icon: IoniconName; label: string; action: string }> = [

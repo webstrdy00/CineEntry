@@ -1,5 +1,5 @@
 /**
- * Theme Configuration for Filmory App
+ * Theme Configuration for CineEntry App
  *
  * Typography, Spacing, Border Radius 등 디자인 시스템 정의
  */

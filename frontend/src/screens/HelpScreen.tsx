@@ -125,7 +125,7 @@ const POPULAR_ITEMS: { sectionIndex: number; itemIndex: number }[] = [
   { sectionIndex: 3, itemIndex: 0 },
 ]
 
-const CONTACT_EMAIL = "filmory.app@gmail.com"
+const CONTACT_EMAIL = "cineentry.app@gmail.com"
 
 function AccordionItem({ item, isOpen, onToggle }: { item: FaqItem; isOpen: boolean; onToggle: () => void }) {
   return (

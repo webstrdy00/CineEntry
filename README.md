@@ -1,4 +1,4 @@
-# Filmory
+# CineEntry
 
 - frontend : RN/Expo
 - backend : FastApi

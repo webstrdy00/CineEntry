@@ -33,7 +33,7 @@ const LoginScreen = ({ navigation }: any) => {
       } else {
         const result = await WebBrowser.openAuthSessionAsync(
           url,
-          'filmory://auth/google/callback'
+          'cineentry://auth/google/callback'
         );
 
         if (result.type === 'success' && result.url) {
@@ -63,7 +63,7 @@ const LoginScreen = ({ navigation }: any) => {
       } else {
         const result = await WebBrowser.openAuthSessionAsync(
           url,
-          'filmory://auth/kakao/callback'
+          'cineentry://auth/kakao/callback'
         );
 
         if (result.type === 'success' && result.url) {
@@ -83,7 +83,7 @@ const LoginScreen = ({ navigation }: any) => {
       {/* 헤더 */}
       <View style={styles.header}>
         <Ionicons name="film" size={72} color={COLORS.gold} />
-        <Text style={styles.title}>Filmory</Text>
+        <Text style={styles.title}>CineEntry</Text>
         <Text style={styles.subtitle}>당신만의 영화 기록장</Text>
       </View>
 

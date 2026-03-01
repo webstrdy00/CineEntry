@@ -58,7 +58,7 @@ const SignUpScreen = ({ navigation }: any) => {
       // AuthContext 업데이트 (자동 로그인)
       setUser(result.user);
 
-      showAlert('회원가입 완료!', 'Filmory에 오신 것을 환영합니다.');
+      showAlert('회원가입 완료!', 'CineEntry에 오신 것을 환영합니다.');
     } catch (error: any) {
       console.error('❌ 회원가입 실패:', error);
 
@@ -88,7 +88,7 @@ const SignUpScreen = ({ navigation }: any) => {
         </TouchableOpacity>
 
         <Text style={styles.title}>계정 만들기</Text>
-        <Text style={styles.subtitle}>Filmory에 오신 것을 환영합니다</Text>
+        <Text style={styles.subtitle}>CineEntry에 오신 것을 환영합니다</Text>
 
         <View style={styles.form}>
           <TextInput
