@@ -39,6 +39,28 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _oauth_states: dict[str, str] = {}
 
 
+def _consume_oauth_state(state: str | None, provider: str) -> None:
+    """
+    OAuth state 1회용 검증/소비.
+
+    - state 누락 차단
+    - provider 불일치 차단 (google state를 kakao에 재사용 방지)
+    - 재사용 차단(pop)
+    """
+    if not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="state 값이 필요합니다."
+        )
+
+    saved_provider = _oauth_states.pop(state, None)
+    if saved_provider != provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않은 state입니다."
+        )
+
+
 # ===========================
 # 이메일 인증
 # ===========================
@@ -326,15 +348,8 @@ async def google_auth_callback(
     - 사용자 정보 조회
     - 기존 사용자면 로그인, 신규면 회원가입
     """
-    # State 검증
-    if request.state and request.state not in _oauth_states:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="유효하지 않은 state입니다."
-        )
-
-    if request.state:
-        del _oauth_states[request.state]
+    # State 검증 (필수 + provider 일치 + 1회용)
+    _consume_oauth_state(request.state, "google")
 
     # Authorization code로 토큰 교환
     async with httpx.AsyncClient() as client:
@@ -481,15 +496,8 @@ async def kakao_auth_callback(
     - 사용자 정보 조회
     - 기존 사용자면 로그인, 신규면 회원가입
     """
-    # State 검증
-    if request.state and request.state not in _oauth_states:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="유효하지 않은 state입니다."
-        )
-
-    if request.state:
-        del _oauth_states[request.state]
+    # State 검증 (필수 + provider 일치 + 1회용)
+    _consume_oauth_state(request.state, "kakao")
 
     # Authorization code로 토큰 교환
     async with httpx.AsyncClient() as client:

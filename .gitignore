@@ -6,6 +6,7 @@
 /.omc
 /.omx
 .codex/
+security-report/
 
 .claude/
 CLAUDE.md
