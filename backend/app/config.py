@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     FRONTEND_URL: str = "http://localhost:8081"  # 프론트엔드 URL (OAuth 콜백용)
+    BACKEND_PUBLIC_URL: str = "http://localhost:8000"  # 이메일 인증/재설정 링크용
 
     # Database (Independent PostgreSQL)
     DATABASE_URL: str
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # Access Token 만료: 30분
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # Refresh Token 만료: 30일
+    EMAIL_VERIFICATION_TOKEN_TTL_HOURS: int = 24
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
+    AUTH_EMAIL_COOLDOWN_SECONDS: int = 60
 
     # OAuth - Google
     GOOGLE_CLIENT_ID: Optional[str] = None
@@ -44,6 +48,17 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_S3_BUCKET: Optional[str] = None
     AWS_REGION: str = "ap-northeast-2"
+
+    # Email delivery
+    EMAIL_FROM_ADDRESS: str = "no-reply@cineentry.app"
+    EMAIL_FROM_NAME: str = "CineEntry"
+    EMAIL_LOG_ONLY: bool = True
+    SMTP_HOST: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_USE_TLS: bool = True
+    SMTP_USE_SSL: bool = False
 
     # Legacy Supabase settings (무시됨, 호환성 유지)
     SUPABASE_URL: Optional[str] = None

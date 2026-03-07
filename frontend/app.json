@@ -11,30 +11,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cineentry.app",
-      "associatedDomains": [
-        "applinks:owblpingqcelupohuspg.supabase.co"
-      ]
+      "bundleIdentifier": "com.cineentry.app"
     },
     "android": {
-      "package": "com.cineentry.app",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": true,
-          "data": [
-            {
-              "scheme": "https",
-              "host": "owblpingqcelupohuspg.supabase.co",
-              "pathPrefix": "/auth/v1/callback"
-            }
-          ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
-        }
-      ]
+      "package": "com.cineentry.app"
     },
     "plugins": [
       "expo-asset",

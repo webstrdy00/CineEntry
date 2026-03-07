@@ -58,6 +58,9 @@ class UserResponse(UserBase):
     id: UUID
     yearly_goal: int
     auth_provider: Optional[str] = "email"
+    auth_methods: list[str] = Field(default_factory=list)
+    email_verified: bool = False
+    has_password: bool = False
     created_at: datetime
     updated_at: datetime
 

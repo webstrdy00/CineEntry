@@ -90,6 +90,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('🔗 Deep link received:', url);
 
       try {
+        if (url.includes('/auth/email/verified')) {
+          const currentUser = await getCurrentUser();
+          if (currentUser) {
+            setUser(currentUser);
+          }
+          return;
+        }
+
+        if (url.includes('/auth/password-reset-complete')) {
+          await clearTokens();
+          setUser(null);
+          return;
+        }
+
         // Google OAuth 콜백
         if (url.includes('/auth/google/callback')) {
           const urlParts = url.split('?');
@@ -133,10 +147,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // 웹 환경에서 URL 파라미터 처리
     if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
       const url = window.location.href;
-      if (url.includes('/auth/') && url.includes('code=')) {
+      if (url.includes('/auth/')) {
         handleDeepLink(url).then(() => {
-          // OAuth 콜백 처리 후 콜백 경로를 제거하고 루트로 정리
-          window.history.replaceState({}, document.title, '/');
+          if (url.includes('code=') || url.includes('/auth/email/verified') || url.includes('/auth/password-reset-complete')) {
+            window.history.replaceState({}, document.title, '/');
+          }
         });
       }
     }

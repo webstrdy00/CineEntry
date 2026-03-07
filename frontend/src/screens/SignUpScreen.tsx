@@ -58,7 +58,7 @@ const SignUpScreen = ({ navigation }: any) => {
       // AuthContext 업데이트 (자동 로그인)
       setUser(result.user);
 
-      showAlert('회원가입 완료!', 'CineEntry에 오신 것을 환영합니다.');
+      showAlert('회원가입 완료!', 'CineEntry에 오신 것을 환영합니다.\n인증 메일을 확인해 이메일 인증을 완료해주세요.');
     } catch (error: any) {
       console.error('❌ 회원가입 실패:', error);
 

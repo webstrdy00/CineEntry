@@ -4,7 +4,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
@@ -28,8 +27,10 @@ import {
 import type { RootStackParamList } from "../types"
 import { useAuth } from "../contexts/AuthContext"
 import { getCurrentUser, updateUserProfile, deleteUser } from "../services/userService"
+import { requestPasswordReset, resendVerificationEmail } from "../services/authService"
 import api, { unwrapResponse } from "../lib/api"
 import { useAlert } from "../components/CustomAlert"
+import UserAvatar from "../components/UserAvatar"
 
 type EditProfileNavigationProp = NativeStackNavigationProp<RootStackParamList>
 
@@ -44,17 +45,21 @@ export default function EditProfileScreen() {
   const [yearlyGoal, setYearlyGoal] = useState("")
   const [email, setEmail] = useState("")
   const [authProvider, setAuthProvider] = useState("")
+  const [authMethods, setAuthMethods] = useState<string[]>([])
+  const [emailVerified, setEmailVerified] = useState(false)
+  const [hasPassword, setHasPassword] = useState(false)
   const [createdAt, setCreatedAt] = useState("")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [sendingAccountMail, setSendingAccountMail] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
 
   // 원본 값 (변경 감지용)
   const originalValues = useRef({ displayName: "", avatarUrl: "", yearlyGoal: "" })
-  const isBusy = saving || uploadingAvatar || isDeleting
+  const isBusy = saving || uploadingAvatar || isDeleting || sendingAccountMail
 
   const getErrorMessage = (error: unknown, fallback: string) => {
     if (!isAxiosError(error)) return fallback
@@ -100,6 +105,9 @@ export default function EditProfileScreen() {
       setYearlyGoal(goal)
       setEmail(user.email || "")
       setAuthProvider(user.auth_provider || "email")
+      setAuthMethods(user.auth_methods || [user.auth_provider || "email"])
+      setEmailVerified(!!user.email_verified)
+      setHasPassword(!!user.has_password)
       setCreatedAt(user.created_at || "")
 
       originalValues.current = { displayName: name, avatarUrl: avatar, yearlyGoal: goal }
@@ -279,6 +287,43 @@ export default function EditProfileScreen() {
     return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`
   }
 
+  const formatAuthMethodLabel = (method: string) => {
+    if (method === "google") return "Google"
+    if (method === "kakao") return "Kakao"
+    return "이메일"
+  }
+
+  const handleResendVerification = async () => {
+    if (isBusy) return
+    try {
+      setSendingAccountMail(true)
+      await resendVerificationEmail()
+      showAlert("인증 메일 발송", "인증 메일을 다시 보냈습니다. 메일함과 스팸함을 확인해주세요.")
+    } catch (error) {
+      showAlert("오류", getErrorMessage(error, "인증 메일 재발송에 실패했습니다."))
+    } finally {
+      setSendingAccountMail(false)
+    }
+  }
+
+  const handleSendPasswordReset = async () => {
+    if (isBusy) return
+    try {
+      setSendingAccountMail(true)
+      await requestPasswordReset(email)
+      showAlert(
+        hasPassword ? "재설정 메일 발송" : "비밀번호 설정 메일 발송",
+        hasPassword
+          ? "비밀번호 재설정 안내 메일을 보냈습니다. 메일함과 스팸함을 확인해주세요."
+          : "이메일 로그인 비밀번호를 설정할 수 있는 메일을 보냈습니다. 메일함과 스팸함을 확인해주세요.",
+      )
+    } catch (error) {
+      showAlert("오류", getErrorMessage(error, "비밀번호 재설정 메일 발송에 실패했습니다."))
+    } finally {
+      setSendingAccountMail(false)
+    }
+  }
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -320,10 +365,7 @@ export default function EditProfileScreen() {
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
           <TouchableOpacity onPress={handlePickAvatar} disabled={isBusy} style={styles.avatarTouchable}>
-            <Image
-              source={{ uri: avatarUrl || "https://i.pravatar.cc/150?img=12" }}
-              style={styles.avatar}
-            />
+            <UserAvatar uri={avatarUrl} size={100} style={styles.avatar} />
             <View style={styles.avatarOverlay}>
               {uploadingAvatar ? (
                 <ActivityIndicator size="small" color={COLORS.white} />
@@ -369,6 +411,14 @@ export default function EditProfileScreen() {
                 <Text style={styles.providerText}>{providerLabel}</Text>
               </View>
             </View>
+            <View style={styles.methodChipRow}>
+              {authMethods.map((method) => (
+                <View key={method} style={styles.methodChip}>
+                  <Text style={styles.methodChipText}>{formatAuthMethodLabel(method)}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={styles.fieldHint}>연결된 로그인 수단</Text>
           </View>
 
           {/* 연간 목표 */}
@@ -418,8 +468,41 @@ export default function EditProfileScreen() {
 
           <View style={styles.accountInfoRow}>
             <Ionicons name={providerIcon as any} size={18} color={COLORS.lightGray} />
-            <Text style={styles.accountInfoText}>로그인 방식: {providerLabel}</Text>
+            <Text style={styles.accountInfoText}>기본 로그인 방식: {providerLabel}</Text>
           </View>
+
+          {!emailVerified ? (
+            <>
+              <View style={styles.accountInfoRow}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={18}
+                  color="#f59e0b"
+                />
+                <Text style={styles.accountInfoText}>이메일 인증이 아직 필요합니다</Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.accountActionButton, isBusy && styles.accountActionButtonDisabled]}
+                onPress={() => void handleResendVerification()}
+                disabled={isBusy}
+              >
+                <Ionicons name="mail-unread-outline" size={18} color={COLORS.gold} />
+                <Text style={styles.accountActionText}>인증 메일 다시 보내기</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.accountActionButton, isBusy && styles.accountActionButtonDisabled]}
+            onPress={() => void handleSendPasswordReset()}
+            disabled={isBusy}
+          >
+            <Ionicons name="key-outline" size={18} color={COLORS.gold} />
+            <Text style={styles.accountActionText}>
+              {hasPassword ? "비밀번호 재설정 메일 보내기" : "이메일 비밀번호 설정 메일 보내기"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Danger Zone */}
@@ -624,6 +707,23 @@ const styles = StyleSheet.create({
     color: COLORS.gold,
     fontWeight: "600",
   },
+  methodChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  methodChip: {
+    backgroundColor: COLORS.darkNavy,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  methodChipText: {
+    color: COLORS.gold,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   fieldHint: {
     fontSize: 12,
     color: COLORS.lightGray,
@@ -686,6 +786,26 @@ const styles = StyleSheet.create({
   accountInfoText: {
     fontSize: 14,
     color: COLORS.lightGray,
+  },
+  accountActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.22)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginTop: 8,
+  },
+  accountActionButtonDisabled: {
+    opacity: 0.5,
+  },
+  accountActionText: {
+    fontSize: 14,
+    color: COLORS.white,
+    fontWeight: "600",
   },
 
   // Danger Zone

@@ -1,5 +1,6 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, Linking } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from "react-native"
 import { useAlert } from "../components/CustomAlert"
+import UserAvatar from "../components/UserAvatar"
 import { Ionicons } from "@expo/vector-icons"
 import Constants from "expo-constants"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
@@ -11,6 +12,7 @@ import type { RootStackParamList } from "../types"
 import { useAuth } from "../contexts/AuthContext"
 import { getCurrentUser } from "../services/userService"
 import { getOverallStats } from "../services/statsService"
+import { resendVerificationEmail } from "../services/authService"
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 type IoniconName = keyof typeof Ionicons.glyphMap
@@ -62,6 +64,26 @@ export default function ProfileScreen() {
     await loadData()
     setRefreshing(false)
   }, [])
+
+  const formatAuthMethod = (method: string) => {
+    if (method === "google") return "Google"
+    if (method === "kakao") return "Kakao"
+    return "이메일"
+  }
+
+  const handleResendVerification = async () => {
+    try {
+      await resendVerificationEmail()
+      await loadData()
+      showAlert("인증 메일 발송", "인증 메일을 다시 보냈습니다. 메일함과 스팸함을 확인해주세요.")
+    } catch (error: any) {
+      const message =
+        error.response?.data?.detail ||
+        error.message ||
+        "인증 메일 재발송에 실패했습니다."
+      showAlert("오류", message)
+    }
+  }
 
   const handleLogout = () => {
     showAlert(
@@ -183,12 +205,16 @@ export default function ProfileScreen() {
 
       {/* Profile Card */}
       <View style={styles.profileCard}>
-        <Image
-          source={{ uri: user?.avatar_url || "https://i.pravatar.cc/150?img=12" }}
-          style={styles.avatar}
-        />
+        <UserAvatar uri={user?.avatar_url} style={styles.avatar} />
         <Text style={styles.userName}>{user?.display_name || "영화 애호가"}</Text>
         <Text style={styles.userEmail}>{user?.email || "-"}</Text>
+        <View style={styles.authBadgeRow}>
+          {(user?.auth_methods || [user?.auth_provider || "email"]).map((method: string) => (
+            <View key={method} style={styles.authBadge}>
+              <Text style={styles.authBadgeText}>{formatAuthMethod(method)}</Text>
+            </View>
+          ))}
+        </View>
         <View style={styles.cardDivider} />
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
@@ -207,6 +233,21 @@ export default function ProfileScreen() {
           </View>
         </View>
       </View>
+
+      {!user?.email_verified ? (
+        <View style={styles.noticeCard}>
+          <View style={styles.noticeHeader}>
+            <Ionicons name="mail-unread-outline" size={20} color="#f59e0b" />
+            <Text style={styles.noticeTitle}>이메일 인증이 아직 완료되지 않았어요</Text>
+          </View>
+          <Text style={styles.noticeText}>
+            인증을 마치면 이메일 비밀번호 로그인과 비밀번호 재설정을 더 안전하게 사용할 수 있습니다.
+          </Text>
+          <TouchableOpacity style={styles.noticeButton} onPress={() => void handleResendVerification()}>
+            <Text style={styles.noticeButtonText}>인증 메일 다시 보내기</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* Divider */}
       <View style={styles.sectionDivider} />
@@ -305,11 +346,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.lightGray,
   },
+  authBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  authBadge: {
+    backgroundColor: COLORS.darkNavy,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  authBadgeText: {
+    color: COLORS.gold,
+    fontSize: 12,
+    fontWeight: "700",
+  },
   cardDivider: {
     width: "100%",
     height: 1,
     backgroundColor: "rgba(160,160,160,0.15)",
     marginTop: 20,
+  },
+  noticeCard: {
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 18,
+    borderRadius: 14,
+    backgroundColor: "rgba(245,158,11,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.24)",
+  },
+  noticeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  noticeTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  noticeText: {
+    color: COLORS.lightGray,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  noticeButton: {
+    marginTop: 14,
+    alignSelf: "flex-start",
+    backgroundColor: COLORS.gold,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  noticeButtonText: {
+    color: COLORS.darkNavy,
+    fontSize: 13,
+    fontWeight: "800",
   },
   statsRow: {
     flexDirection: "row",

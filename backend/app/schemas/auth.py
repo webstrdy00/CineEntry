@@ -34,6 +34,17 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=100)
 
 
+class PasswordResetRequest(BaseModel):
+    """비밀번호 재설정 요청"""
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """비밀번호 재설정 완료 요청"""
+    token: str
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
 class OAuthCallbackRequest(BaseModel):
     """OAuth 콜백 요청"""
     code: str
@@ -59,7 +70,9 @@ class AuthUserResponse(BaseModel):
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     auth_provider: str
+    auth_methods: list[str] = Field(default_factory=list)
     email_verified: bool
+    has_password: bool
 
     class Config:
         from_attributes = True

@@ -11,6 +11,9 @@ export interface User {
   avatar_url?: string | null;
   yearly_goal?: number;
   auth_provider?: string;
+  auth_methods?: string[];
+  email_verified?: boolean;
+  has_password?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -53,6 +53,10 @@ export interface User {
   display_name?: string
   avatar_url?: string
   yearly_goal?: number
+  auth_provider?: string
+  auth_methods?: string[]
+  email_verified?: boolean
+  has_password?: boolean
   created_at?: Date | string
   updated_at?: Date | string
 }

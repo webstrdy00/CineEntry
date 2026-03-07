@@ -16,7 +16,9 @@ export interface AuthUser {
   display_name: string | null;
   avatar_url: string | null;
   auth_provider: string;
+  auth_methods: string[];
   email_verified: boolean;
+  has_password: boolean;
 }
 
 export interface TokenResponse {
@@ -189,6 +191,20 @@ export const changePassword = async (
     current_password: currentPassword,
     new_password: newPassword,
   });
+};
+
+/**
+ * 인증 메일 재전송
+ */
+export const resendVerificationEmail = async (): Promise<void> => {
+  await api.post(`${AUTH_BASE}/email/verification/resend`);
+};
+
+/**
+ * 비밀번호 재설정 메일 요청
+ */
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  await api.post(`${AUTH_BASE}/password-reset/request`, { email });
 };
 
 // ===========================
