@@ -1,110 +1,353 @@
-import { View, Text, StyleSheet, ScrollView, Dimensions } from "react-native"
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native"
+import { Ionicons } from "@expo/vector-icons"
+import { useState, useCallback } from "react"
+import { useFocusEffect } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { LinearGradient } from "expo-linear-gradient"
 import { COLORS } from "../constants/colors"
-import StatCard from "../components/StatCard"
+import { getOverallStats, getMonthlyStats, getGenreStats, getTagStats } from "../services/statsService"
+import { updateUserProfile } from "../services/userService"
+import { useAlert } from "../components/CustomAlert"
+import { YEARLY_GOAL_MAX, YEARLY_GOAL_MIN } from "../constants/profile"
 
 const { width } = Dimensions.get("window")
 
+const GENRE_COLORS = [COLORS.gold, COLORS.red, COLORS.chartBlue, COLORS.chartGreen, COLORS.chartPurple, COLORS.chartOrange]
+
 export default function StatsScreen() {
-  const yearlyGoal = 100
-  const watched = 45
-  const progress = (watched / yearlyGoal) * 100
+  const insets = useSafeAreaInsets()
+  const { showAlert } = useAlert()
+  const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() // 0-indexed
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
+  const defaultStats = {
+    yearly_goal: 100,
+    yearly_progress: 0,
+    yearly_goal_percentage: 0,
+    total_watched: 0,
+    average_rating: 0,
+    total_watch_time: 0,
+    current_streak: 0,
+  }
+  const [stats, setStats] = useState<any>(null)
+  const [monthlyData, setMonthlyData] = useState<any[]>([])
+  const [genreStats, setGenreStats] = useState<any[]>([])
+  const [topTags, setTopTags] = useState<any[]>([])
+  const [isEditingGoal, setIsEditingGoal] = useState(false)
+  const [isSavingGoal, setIsSavingGoal] = useState(false)
 
-  const monthlyData = [
-    { month: "1월", count: 5 },
-    { month: "2월", count: 8 },
-    { month: "3월", count: 6 },
-    { month: "4월", count: 12 },
-    { month: "5월", count: 9 },
-    { month: "6월", count: 5 },
-  ]
+  const handleGoalStep = async (delta: number) => {
+    const currentGoal = displayStats.yearly_goal || 100
+    const nextGoal = Math.max(YEARLY_GOAL_MIN, Math.min(YEARLY_GOAL_MAX, currentGoal + delta))
+    if (nextGoal === currentGoal) return
+    const currentProgress = displayStats.yearly_progress || 0
+    setStats((prev: any) => ({
+      ...prev,
+      yearly_goal: nextGoal,
+      yearly_goal_percentage: nextGoal > 0 ? Math.round(currentProgress / nextGoal * 1000) / 10 : 0,
+    }))
+    try {
+      setIsSavingGoal(true)
+      await updateUserProfile({ yearly_goal: nextGoal })
+    } catch (error) {
+      console.error("연간 목표 저장 실패:", error)
+      setStats((prev: any) => ({
+        ...prev,
+        yearly_goal: currentGoal,
+        yearly_goal_percentage: currentGoal > 0 ? Math.round(currentProgress / currentGoal * 1000) / 10 : 0,
+      }))
+      showAlert("오류", "목표 저장에 실패했습니다.")
+    } finally {
+      setIsSavingGoal(false)
+    }
+  }
 
-  const genreStats = [
-    { genre: "드라마", count: 15, color: COLORS.gold },
-    { genre: "SF", count: 12, color: COLORS.red },
-    { genre: "액션", count: 10, color: "#3498db" },
-    { genre: "코미디", count: 8, color: "#2ecc71" },
-  ]
+  useFocusEffect(
+    useCallback(() => {
+      loadData()
+    }, [])
+  )
 
-  const topTags = [
-    { tag: "#명작", count: 18 },
-    { tag: "#재관람", count: 12 },
-    { tag: "#추천", count: 10 },
-    { tag: "#감동", count: 8 },
-  ]
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError(false)
+      const [statsData, monthlyDataRes, genreDataRes, tagsDataRes] = await Promise.all([
+        getOverallStats(currentYear).catch((err) => {
+          console.error('getOverallStats 실패:', err.message)
+          return null
+        }),
+        getMonthlyStats(6).catch(() => []),
+        getGenreStats(5).catch(() => []),
+        getTagStats(10).catch(() => []),
+      ])
 
-  const maxCount = Math.max(...monthlyData.map((d) => d.count))
+      setStats(statsData || defaultStats)
+
+      const formattedMonthly = monthlyDataRes.map((item: any) => {
+        const date = new Date(item.month + '-01')
+        return {
+          month: date.toLocaleDateString('ko-KR', { month: 'long' }),
+          monthIndex: date.getMonth(),
+          count: item.count,
+        }
+      })
+      setMonthlyData(formattedMonthly)
+
+      const formattedGenres = genreDataRes.map((item: any, index: number) => ({
+        ...item,
+        color: GENRE_COLORS[index % GENRE_COLORS.length],
+      }))
+      setGenreStats(formattedGenres)
+
+      setTopTags(tagsDataRes)
+    } catch (error) {
+      console.error('StatsScreen 데이터 로드 실패:', error)
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadData()
+    setRefreshing(false)
+  }, [])
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.gold} />
+        <Text style={{ color: COLORS.lightGray, marginTop: 12 }}>통계를 불러오는 중...</Text>
+      </View>
+    )
+  }
+
+  if (error) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+        <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+        <TouchableOpacity
+          onPress={loadData}
+          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+        >
+          <Ionicons name="refresh" size={18} color={COLORS.gold} />
+          <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  const displayStats = stats || defaultStats
+
+  const yearlyGoal = displayStats.yearly_goal
+  const watched = displayStats.yearly_progress
+  const progress = displayStats.yearly_goal_percentage
+  const maxCount = monthlyData.length > 0 ? Math.max(...monthlyData.map((d: any) => d.count)) : 1
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+      }
+    >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>통계</Text>
-        <Text style={styles.headerSubtitle}>2025년</Text>
+        <View style={styles.headerSubtitleRow}>
+          <Ionicons name="trophy-outline" size={16} color={COLORS.gold} />
+          <Text style={styles.headerSubtitle}>{currentYear}년</Text>
+        </View>
+      </View>
+
+      {/* Hero Stats Summary */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroRow}>
+          <View style={styles.heroCell}>
+            <View style={styles.heroIconCircle}>
+              <Ionicons name="film-outline" size={20} color={COLORS.gold} />
+            </View>
+            <Text style={styles.heroValue}>{displayStats.total_watched || 0}</Text>
+            <Text style={styles.heroLabel}>총 관람 (편)</Text>
+          </View>
+          <View style={styles.heroDividerVertical} />
+          <View style={styles.heroCell}>
+            <View style={styles.heroIconCircle}>
+              <Ionicons name="star-outline" size={20} color={COLORS.gold} />
+            </View>
+            <Text style={styles.heroValue}>{(displayStats.average_rating || 0).toFixed(1)}</Text>
+            <Text style={styles.heroLabel}>평균 별점</Text>
+          </View>
+        </View>
+        <View style={styles.heroDividerHorizontal} />
+        <View style={styles.heroRow}>
+          <View style={styles.heroCell}>
+            <View style={styles.heroIconCircle}>
+              <Ionicons name="time-outline" size={20} color={COLORS.gold} />
+            </View>
+            <Text style={styles.heroValue}>{Math.floor((displayStats.total_watch_time || 0) / 60)}</Text>
+            <Text style={styles.heroLabel}>시청 시간 (h)</Text>
+          </View>
+          <View style={styles.heroDividerVertical} />
+          <View style={styles.heroCell}>
+            <View style={styles.heroIconCircle}>
+              <Ionicons name="flame-outline" size={20} color={COLORS.gold} />
+            </View>
+            <Text style={styles.heroValue}>{displayStats.current_streak || 0}</Text>
+            <Text style={styles.heroLabel}>연속 기록 (일)</Text>
+          </View>
+        </View>
       </View>
 
       {/* Yearly Goal */}
-      <View style={styles.goalCard}>
+      <TouchableOpacity style={styles.goalCard} activeOpacity={0.8} onPress={() => setIsEditingGoal(!isEditingGoal)}>
         <View style={styles.goalHeader}>
-          <Text style={styles.goalTitle}>연간 목표</Text>
-          <Text style={styles.goalProgress}>
-            {watched} / {yearlyGoal}편
-          </Text>
+          <View style={styles.goalTitleRow}>
+            <Ionicons name="trophy-outline" size={18} color={COLORS.gold} />
+            <Text style={styles.goalTitle}>연간 목표</Text>
+            <Ionicons name={isEditingGoal ? "chevron-up" : "create-outline"} size={14} color={COLORS.lightGray} style={{ marginLeft: 4 }} />
+          </View>
+          <View style={styles.goalNumbers}>
+            <Text style={styles.goalWatched}>{watched}</Text>
+            <Text style={styles.goalTotal}> / {yearlyGoal}편</Text>
+          </View>
         </View>
         <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBarFill, { width: `${progress}%` }]} />
+          <View style={[styles.progressBarFill, { width: `${Math.min(progress, 100)}%` }]} />
         </View>
-        <Text style={styles.goalPercentage}>{progress.toFixed(0)}% 달성</Text>
-      </View>
+        <View style={styles.goalFooter}>
+          <Text style={styles.goalPercentage}>{progress.toFixed(1)}% 달성</Text>
+          {progress >= 100 && (
+            <View style={styles.milestoneBadge}>
+              <Ionicons name="checkmark-circle" size={14} color={COLORS.gold} />
+              <Text style={styles.milestoneText}>목표 달성!</Text>
+            </View>
+          )}
+        </View>
+        {isEditingGoal && (
+          <View style={styles.goalStepperRow}>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-10)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>-10</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-1)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>-1</Text>
+            </TouchableOpacity>
+            <View style={styles.goalStepperValue}>
+              <Text style={styles.goalStepperValueText}>{yearlyGoal}</Text>
+            </View>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(1)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>+1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(10)} disabled={isSavingGoal}>
+              <Text style={styles.goalStepperButtonText}>+10</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {/* Monthly Chart */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>월별 관람 추이</Text>
-        <View style={styles.chartContainer}>
-          {monthlyData.map((item, index) => (
-            <View key={index} style={styles.chartBar}>
-              <View style={styles.barContainer}>
-                <View style={[styles.bar, { height: (item.count / maxCount) * 120 }]} />
-              </View>
-              <Text style={styles.barCount}>{item.count}</Text>
-              <Text style={styles.barLabel}>{item.month}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Stats Grid */}
-      <View style={styles.statsGrid}>
-        <StatCard title="총 관람" value="45편" icon="film" color={COLORS.gold} />
-        <StatCard title="평균 별점" value="4.2" icon="star" color={COLORS.gold} />
-        <StatCard title="총 시청 시간" value="120시간" icon="time" color={COLORS.gold} />
-        <StatCard title="연속 기록" value="22일" icon="calendar" color={COLORS.gold} />
+        {monthlyData.length > 0 ? (
+          <View style={styles.chartContainer}>
+            {monthlyData.map((item: any, index: number) => {
+              const isCurrentMonth = item.monthIndex === currentMonth
+              const barHeight = item.count > 0 ? (item.count / maxCount) * 160 : 2
+              return (
+                <View key={index} style={styles.chartBar}>
+                  <View style={styles.barLabelTop}>
+                    {item.count > 0 && <Text style={styles.barCount}>{item.count}</Text>}
+                  </View>
+                  <View style={styles.barContainer}>
+                    {item.count > 0 ? (
+                      <LinearGradient
+                        colors={['rgba(212,175,55,0.3)', COLORS.gold]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                        style={[styles.bar, { height: barHeight }]}
+                      />
+                    ) : (
+                      <View style={[styles.barEmpty, { height: barHeight }]} />
+                    )}
+                  </View>
+                  {isCurrentMonth && <View style={styles.currentMonthDot} />}
+                  <Text style={[styles.barLabel, isCurrentMonth && styles.barLabelHighlight]}>
+                    {item.month}
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="bar-chart-outline" size={40} color={COLORS.lightGray} />
+            <Text style={styles.emptyText}>아직 관람 기록이 없습니다</Text>
+          </View>
+        )}
       </View>
 
       {/* Genre Stats */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>장르별 통계</Text>
-        {genreStats.map((item, index) => (
-          <View key={index} style={styles.genreItem}>
-            <View style={styles.genreInfo}>
-              <View style={[styles.genreColor, { backgroundColor: item.color }]} />
-              <Text style={styles.genreText}>{item.genre}</Text>
-            </View>
-            <Text style={styles.genreCount}>{item.count}편</Text>
+        {genreStats.length > 0 ? (
+          <View style={styles.genreCard}>
+            {genreStats.map((item: any, index: number) => (
+              <View key={index}>
+                {index > 0 && <View style={styles.genreDivider} />}
+                <View style={styles.genreItem}>
+                  <View style={styles.genreTopRow}>
+                    <Text style={styles.genreText}>{item.genre}</Text>
+                    <Text style={styles.genreCount}>
+                      {item.count}편 <Text style={styles.genrePercent}>{item.percentage?.toFixed(0) ?? 0}%</Text>
+                    </Text>
+                  </View>
+                  <View style={styles.genreBarBg}>
+                    <View style={[styles.genreBarFill, { width: `${item.percentage ?? 0}%`, backgroundColor: item.color }]} />
+                  </View>
+                </View>
+              </View>
+            ))}
           </View>
-        ))}
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="pie-chart-outline" size={40} color={COLORS.lightGray} />
+            <Text style={styles.emptyText}>장르 데이터가 없습니다</Text>
+          </View>
+        )}
       </View>
 
       {/* Top Tags */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>인기 태그</Text>
-        <View style={styles.tagsContainer}>
-          {topTags.map((item, index) => (
-            <View key={index} style={styles.tagItem}>
-              <Text style={styles.tagText}>{item.tag}</Text>
-              <Text style={styles.tagCount}>{item.count}</Text>
-            </View>
-          ))}
-        </View>
+        {topTags.length > 0 ? (
+          <View style={styles.tagsContainer}>
+            {topTags.map((item: any, index: number) => {
+              const isTop3 = index < 3
+              return (
+                <View key={index} style={[styles.tagItem, isTop3 && styles.tagItemTop3]}>
+                  {isTop3 && (
+                    <View style={styles.tagRankBadge}>
+                      <Text style={styles.tagRankText}>{index + 1}</Text>
+                    </View>
+                  )}
+                  <Text style={styles.tagText}>{item.tag}</Text>
+                  <Text style={styles.tagCount}>({item.count})</Text>
+                </View>
+              )
+            })}
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="pricetags-outline" size={40} color={COLORS.lightGray} />
+            <Text style={styles.emptyText}>등록된 태그가 없습니다</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.bottomPadding} />
@@ -119,7 +362,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   headerTitle: {
@@ -128,10 +370,64 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     marginBottom: 4,
   },
+  headerSubtitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
   headerSubtitle: {
     fontSize: 14,
     color: COLORS.lightGray,
   },
+
+  // Hero Stats Summary
+  heroCard: {
+    backgroundColor: COLORS.deepGray,
+    marginHorizontal: 20,
+    marginBottom: 24,
+    borderRadius: 16,
+    padding: 20,
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  heroCell: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  heroIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(212,175,55,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  heroValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: COLORS.white,
+    marginBottom: 2,
+  },
+  heroLabel: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+  },
+  heroDividerVertical: {
+    width: 1,
+    height: 60,
+    backgroundColor: "rgba(160,160,160,0.15)",
+  },
+  heroDividerHorizontal: {
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.15)",
+    marginVertical: 4,
+  },
+
+  // Yearly Goal
   goalCard: {
     backgroundColor: COLORS.deepGray,
     marginHorizontal: 20,
@@ -143,34 +439,68 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 14,
+  },
+  goalTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   goalTitle: {
     fontSize: 18,
     fontWeight: "bold",
     color: COLORS.white,
   },
-  goalProgress: {
-    fontSize: 16,
+  goalNumbers: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  goalWatched: {
+    fontSize: 36,
+    fontWeight: "bold",
     color: COLORS.gold,
-    fontWeight: "600",
+  },
+  goalTotal: {
+    fontSize: 18,
+    color: COLORS.lightGray,
   },
   progressBarContainer: {
-    height: 12,
+    height: 10,
     backgroundColor: COLORS.darkNavy,
-    borderRadius: 6,
+    borderRadius: 5,
     overflow: "hidden",
-    marginBottom: 8,
+    marginBottom: 10,
   },
   progressBarFill: {
     height: "100%",
     backgroundColor: COLORS.gold,
+    borderRadius: 5,
+  },
+  goalFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   goalPercentage: {
     fontSize: 14,
     color: COLORS.lightGray,
-    textAlign: "right",
   },
+  milestoneBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(212,175,55,0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  milestoneText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.gold,
+  },
+
+  // Section
   section: {
     marginBottom: 24,
     paddingHorizontal: 20,
@@ -181,18 +511,27 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     marginBottom: 16,
   },
+
+  // Monthly Chart
   chartContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    height: 180,
+    height: 240,
     backgroundColor: COLORS.deepGray,
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
     borderRadius: 12,
   },
   chartBar: {
     flex: 1,
     alignItems: "center",
+  },
+  barLabelTop: {
+    height: 20,
+    justifyContent: "flex-end",
+    marginBottom: 4,
   },
   barContainer: {
     flex: 1,
@@ -201,14 +540,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   bar: {
-    width: 24,
-    backgroundColor: COLORS.gold,
+    width: 32,
+    borderRadius: 4,
+  },
+  barEmpty: {
+    width: 32,
+    backgroundColor: "rgba(160,160,160,0.3)",
     borderRadius: 4,
   },
   barCount: {
     fontSize: 12,
     color: COLORS.white,
     fontWeight: "600",
+  },
+  currentMonthDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: COLORS.gold,
     marginTop: 4,
   },
   barLabel: {
@@ -216,31 +565,29 @@ const styles = StyleSheet.create({
     color: COLORS.lightGray,
     marginTop: 4,
   },
-  statsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
+  barLabelHighlight: {
+    color: COLORS.gold,
+    fontWeight: "600",
+  },
+
+  // Genre Stats
+  genreCard: {
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    padding: 16,
   },
   genreItem: {
+    paddingVertical: 10,
+  },
+  genreDivider: {
+    height: 1,
+    backgroundColor: "rgba(160,160,160,0.1)",
+  },
+  genreTopRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    padding: 16,
-    borderRadius: 12,
     marginBottom: 8,
-  },
-  genreInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  genreColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
   },
   genreText: {
     fontSize: 15,
@@ -248,10 +595,27 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   genreCount: {
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.gold,
     fontWeight: "600",
   },
+  genrePercent: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    fontWeight: "400",
+  },
+  genreBarBg: {
+    height: 6,
+    backgroundColor: COLORS.darkNavy,
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  genreBarFill: {
+    height: "100%",
+    borderRadius: 3,
+  },
+
+  // Tags
   tagsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -264,7 +628,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
-    gap: 8,
+    gap: 6,
+  },
+  tagItemTop3: {
+    borderWidth: 1,
+    borderColor: "rgba(212,175,55,0.35)",
+  },
+  tagRankBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: COLORS.gold,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tagRankText: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: COLORS.darkNavy,
   },
   tagText: {
     fontSize: 14,
@@ -275,7 +656,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.lightGray,
   },
-  bottomPadding: {
-    height: 20,
+
+  // Empty State
+  emptyState: {
+    backgroundColor: COLORS.deepGray,
+    borderRadius: 12,
+    padding: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
   },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.lightGray,
+  },
+
+  bottomPadding: {
+    height: 40,
+  },
+  goalStepperRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", gap: 8,
+  },
+  goalStepperButton: {
+    width: 44, height: 36, borderRadius: 10, backgroundColor: COLORS.darkNavy,
+    alignItems: "center", justifyContent: "center",
+  },
+  goalStepperButtonText: { color: COLORS.gold, fontSize: 14, fontWeight: "700" },
+  goalStepperValue: {
+    minWidth: 56, height: 36, borderRadius: 10, backgroundColor: "rgba(212,175,55,0.15)",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 8,
+  },
+  goalStepperValueText: { color: COLORS.gold, fontSize: 18, fontWeight: "800" },
 })

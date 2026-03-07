@@ -3,32 +3,32 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: filmory-postgres
+    container_name: cineentry-postgres
     environment:
-      POSTGRES_USER: filmory_user
-      POSTGRES_PASSWORD: filmory_password
-      POSTGRES_DB: filmory_db
+      POSTGRES_USER: cineentry_user
+      POSTGRES_PASSWORD: cineentry_password
+      POSTGRES_DB: cineentry_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - filmory-network
+      - cineentry-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U filmory_user -d filmory_db"]
+      test: ["CMD-SHELL", "pg_isready -U cineentry_user -d cineentry_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: filmory-redis
+    container_name: cineentry-redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
-      - filmory-network
+      - cineentry-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,5 +42,5 @@ volumes:
     driver: local
 
 networks:
-  filmory-network:
+  cineentry-network:
     driver: bridge

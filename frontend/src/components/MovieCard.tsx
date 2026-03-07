@@ -9,7 +9,11 @@ import type { MovieCardProps } from "../types"
  * 영화 포스터와 기본 정보를 표시하는 재사용 가능한 카드 컴포넌트
  * HomeScreen, MoviesScreen 등에서 사용
  */
-export default function MovieCard({ movie, onPress, showRating = false }: MovieCardProps & { showRating?: boolean }) {
+export default function MovieCard({
+  movie,
+  onPress,
+  showRating = false,
+}: MovieCardProps & { showRating?: boolean }) {
   return (
     <TouchableOpacity
       style={styles.container}
@@ -18,7 +22,7 @@ export default function MovieCard({ movie, onPress, showRating = false }: MovieC
     >
       {/* 포스터 이미지 */}
       <Image
-        source={{ uri: movie.poster }}
+        source={{ uri: movie.poster_url || movie.poster }}
         style={styles.poster}
         resizeMode="cover"
       />

@@ -1,8 +1,18 @@
 /logs
 /docs
+/image
+/.serena
+/issues
+/.omc
+/.omx
+.codex/
+security-report/
 
 .claude/
 CLAUDE.md
 CLAUDE-*.md
 
 AGENTS.md
+
+/backend/gcp-key.json
+/backend/*gcp-key*.json

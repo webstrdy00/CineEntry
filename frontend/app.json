@@ -1,31 +1,25 @@
 {
   "expo": {
-    "name": "영화 기록",
-    "slug": "movie-tracker-app",
+    "name": "CineEntry",
+    "slug": "cineentry",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1a1d29"
-    },
-    "assetBundlePatterns": ["**/*"],
+    "scheme": "cineentry",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.movietracker.app"
+      "bundleIdentifier": "com.cineentry.app"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1a1d29"
-      },
-      "package": "com.movietracker.app"
+      "package": "com.cineentry.app"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": ["expo-asset", "expo-font"]
+    "plugins": [
+      "expo-asset",
+      "expo-font",
+      "expo-media-library\\"
+    ]
   }
 }

@@ -13,15 +13,119 @@ from app.models.user_movie import UserMovie
 from app.models.movie import Movie
 
 
+# 회원가입 시 자동 생성되는 기본 컬렉션 정의
+DEFAULT_AUTO_COLLECTIONS = [
+    {
+        "name": "올해 본 영화",
+        "description": "올해 관람 완료한 영화",
+        "auto_rules": {
+            "status": "completed",
+            "watch_date": {"min": f"{datetime.now().year}-01-01", "max": f"{datetime.now().year}-12-31"},
+        },
+    },
+    {
+        "name": "별점 4점 이상",
+        "description": "높게 평가한 영화 모음",
+        "auto_rules": {
+            "status": "completed",
+            "rating": {"min": 4.0},
+        },
+    },
+    {
+        "name": "인생 영화",
+        "description": "인생 영화로 선택한 작품들",
+        "auto_rules": {
+            "is_best_movie": True,
+        },
+    },
+    {
+        "name": "보고 싶은 영화",
+        "description": "보고 싶은 영화 목록",
+        "auto_rules": {
+            "status": "watchlist",
+        },
+    },
+]
+
+
 class AutoCollectionService:
     """자동 컬렉션 서비스 클래스"""
+
+    @staticmethod
+    def create_default_collections(user_id: str, db: Session) -> List[Collection]:
+        """
+        신규 사용자에게 기본 자동 컬렉션 생성
+
+        Args:
+            user_id: 사용자 ID
+            db: DB 세션
+
+        Returns:
+            생성된 컬렉션 목록
+        """
+        # 이미 자동 컬렉션이 있으면 스킵
+        existing = db.query(Collection).filter(
+            Collection.user_id == user_id,
+            Collection.is_auto == True
+        ).count()
+
+        if existing > 0:
+            return []
+
+        created = []
+        for config in DEFAULT_AUTO_COLLECTIONS:
+            # 올해 날짜를 동적으로 생성
+            rules = config["auto_rules"].copy()
+            if "watch_date" in rules:
+                year = datetime.now().year
+                rules["watch_date"] = {"min": f"{year}-01-01", "max": f"{year}-12-31"}
+
+            collection = Collection(
+                user_id=user_id,
+                name=config["name"],
+                description=config["description"],
+                is_auto=True,
+                auto_rules=rules,
+            )
+            db.add(collection)
+            created.append(collection)
+
+        db.commit()
+        for c in created:
+            db.refresh(c)
+
+        return created
+
+    @staticmethod
+    def sync_all_for_user(user_id: str, db: Session) -> None:
+        """
+        사용자의 모든 자동 컬렉션을 동기화
+
+        영화 추가/수정/삭제 후 호출하여 자동 컬렉션을 최신 상태로 유지
+
+        Args:
+            user_id: 사용자 ID
+            db: DB 세션
+        """
+        auto_collections = db.query(Collection).filter(
+            Collection.user_id == user_id,
+            Collection.is_auto == True,
+            Collection.auto_rules.isnot(None),
+        ).all()
+
+        for collection in auto_collections:
+            try:
+                AutoCollectionService.sync_auto_collection(collection.id, db)
+            except Exception:
+                # 개별 컬렉션 동기화 실패 시 나머지는 계속 진행
+                pass
 
     @staticmethod
     def sync_auto_collection(collection_id: int, db: Session) -> Dict[str, Any]:
         """
         자동 컬렉션 동기화
 
-        auto_rule JSON 형식:
+        auto_rules JSON 형식:
         {
             "status": "completed",
             "rating": {"min": 4.0, "max": 5.0},
@@ -49,13 +153,13 @@ class AutoCollectionService:
         if not collection.is_auto:
             raise ValueError(f"Collection is not auto: {collection_id}")
 
-        if not collection.auto_rule:
-            raise ValueError(f"Collection auto_rule is empty: {collection_id}")
+        if not collection.auto_rules:
+            raise ValueError(f"Collection auto_rules is empty: {collection_id}")
 
         # 규칙에 맞는 영화 찾기
         matching_movies = AutoCollectionService._find_matching_movies(
             user_id=collection.user_id,
-            rules=collection.auto_rule,
+            rules=collection.auto_rules,
             db=db
         )
 
@@ -113,7 +217,7 @@ class AutoCollectionService:
 
         Args:
             user_id: 사용자 ID
-            rules: auto_rule JSON
+            rules: auto_rules JSON
             db: DB 세션
 
         Returns:
@@ -124,7 +228,10 @@ class AutoCollectionService:
 
         # 1. status 필터
         if "status" in rules:
-            query = query.filter(UserMovie.status == rules["status"])
+            if rules["status"] in ("watchlist", "wishlist"):
+                query = query.filter(UserMovie.status.in_(["watchlist", "wishlist"]))
+            else:
+                query = query.filter(UserMovie.status == rules["status"])
 
         # 2. rating 필터 (min, max)
         if "rating" in rules:
@@ -180,10 +287,10 @@ class AutoCollectionService:
     @staticmethod
     def validate_auto_rule(rules: Dict[str, Any]) -> bool:
         """
-        auto_rule 검증
+        auto_rules 검증
 
         Args:
-            rules: auto_rule JSON
+            rules: auto_rules JSON
 
         Returns:
             bool: 유효 여부
@@ -192,10 +299,10 @@ class AutoCollectionService:
             ValueError: 규칙이 유효하지 않을 경우
         """
         if not isinstance(rules, dict):
-            raise ValueError("auto_rule must be a dict")
+            raise ValueError("auto_rules must be a dict")
 
         if not rules:
-            raise ValueError("auto_rule cannot be empty")
+            raise ValueError("auto_rules cannot be empty")
 
         # 허용된 필드 목록
         allowed_fields = [
@@ -206,11 +313,11 @@ class AutoCollectionService:
         # 필드 검증
         for field in rules.keys():
             if field not in allowed_fields:
-                raise ValueError(f"Invalid field in auto_rule: {field}")
+                raise ValueError(f"Invalid field in auto_rules: {field}")
 
         # status 검증
         if "status" in rules:
-            allowed_status = ["wishlist", "watching", "completed"]
+            allowed_status = ["watchlist", "wishlist", "watching", "completed"]
             if rules["status"] not in allowed_status:
                 raise ValueError(f"Invalid status: {rules['status']}")
 

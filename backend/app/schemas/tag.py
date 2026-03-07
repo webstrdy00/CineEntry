@@ -4,18 +4,18 @@ Tag Pydantic schemas
 """
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel
 
 
 class TagBase(BaseModel):
     """Tag 기본 스키마"""
     name: str
-    type: str  # "predefined" or "custom"
 
 
-class TagCreate(TagBase):
+class TagCreate(BaseModel):
     """Tag 생성 스키마"""
-    pass
+    name: str
 
 
 class TagUpdate(BaseModel):
@@ -26,7 +26,8 @@ class TagUpdate(BaseModel):
 class TagResponse(TagBase):
     """Tag 응답 스키마"""
     id: int
-    user_id: Optional[str] = None  # custom tag has user_id, predefined tag is None
+    is_predefined: bool
+    user_id: Optional[UUID] = None  # custom tag has user_id, predefined tag is None
     created_at: datetime
 
     class Config:
@@ -34,5 +35,5 @@ class TagResponse(TagBase):
 
 
 class TagWithCount(TagResponse):
-    """태그와 사용 횟수"""
+    """태그 사용 횟수 포함"""
     count: int

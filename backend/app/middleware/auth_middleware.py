@@ -1,11 +1,11 @@
+"""
+Authentication Middleware
+자체 JWT 토큰 검증
+"""
 from fastapi import HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import httpx
-import jwt
-import json
-from typing import Dict, Any
-from app.config import settings
-from app.services.redis_service import redis_service
+
+from app.services.auth_service import verify_access_token
 
 security = HTTPBearer()
 
@@ -14,109 +14,46 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> str:
     """
-    Validate Supabase JWT token and return user_id
+    Access Token을 검증하고 user_id를 반환
 
     Args:
         credentials: HTTP Bearer token from Authorization header
 
     Returns:
-        user_id (str): Supabase user ID (UUID)
+        user_id (str): 사용자 UUID
 
     Raises:
         HTTPException: 401 if token is invalid or expired
     """
     token = credentials.credentials
 
-    try:
-        # Fetch JWKS from Supabase (should be cached in production)
-        jwks = await fetch_supabase_jwks()
+    user_id = verify_access_token(token)
 
-        # Decode and verify JWT
-        payload = jwt.decode(
-            token,
-            jwks,
-            algorithms=[settings.JWT_ALGORITHM],
-            audience=settings.JWT_AUDIENCE,
-        )
-
-        # Extract user_id from token
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user_id",
-            )
-
-        return user_id
-
-    except jwt.ExpiredSignatureError:
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(e)}",
+            detail="유효하지 않거나 만료된 토큰입니다.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
+    return user_id
 
-async def fetch_supabase_jwks() -> Dict[str, Any]:
-    """
-    Fetch JWKS (JSON Web Key Set) from Supabase
 
-    Uses Redis caching for performance (1 hour cache)
-
-    Returns:
-        JWKS dictionary
-    """
-    cache_key = "supabase_jwks"
-
-    # Try to get from cache
-    cached_jwks = await redis_service.get(cache_key)
-    if cached_jwks:
-        return json.loads(cached_jwks)
-
-    # Fetch from Supabase
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(settings.SUPABASE_JWKS_URL)
-            response.raise_for_status()
-            jwks = response.json()
-
-            # Cache for 1 hour (3600 seconds)
-            await redis_service.set(cache_key, json.dumps(jwks), ttl=3600)
-
-            return jwks
-
-    except httpx.HTTPError as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Failed to fetch JWKS from Supabase: {str(e)}",
-        )
+# Alias for consistency
+get_current_user_id = get_current_user
 
 
 # Optional security for routes that allow optional authentication
 security_optional = HTTPBearer(auto_error=False)
 
 
-# Alias for consistency (get_current_user_id is the same as get_current_user)
-get_current_user_id = get_current_user
-
-
-# Optional: Dependency for routes that allow optional authentication
 async def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials = Security(security_optional),
 ) -> str | None:
     """
-    Get current user if token is provided, otherwise return None
+    토큰이 제공되면 user_id를 반환, 없으면 None
 
-    Useful for routes that work with or without authentication
+    인증 선택적인 라우트에 사용
     """
     if not credentials:
         return None

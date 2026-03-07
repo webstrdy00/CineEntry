@@ -1,21 +1,24 @@
 /**
- * TypeScript Type Definitions for Filmory App
+ * TypeScript Type Definitions for CineEntry App
  *
  * 모든 데이터 모델과 인터페이스 정의
  */
+import type { NavigatorScreenParams } from "@react-navigation/native"
 
 // ============================================
 // Movie Related Types
 // ============================================
 
-export type MovieStatus = "wishlist" | "watching" | "completed"
+export type MovieStatus = "watchlist" | "watching" | "completed"
 
 export interface Movie {
   id: number
   title: string
-  originalTitle?: string
-  poster: string
+  original_title?: string
+  poster?: string
+  poster_url: string
   backdrop?: string
+  backdrop_url?: string
   year?: number
   runtime?: number // minutes
   genre?: string
@@ -23,19 +26,20 @@ export interface Movie {
   synopsis?: string
   rating?: number // 0-5 (0.5 단위)
   status: MovieStatus
-  watchDate?: Date | string
-  createdAt?: Date | string
+  watch_date?: Date | string
+  created_at?: Date | string
+  updated_at?: Date | string
 }
 
 export interface MovieDetail extends Movie {
   actors?: string
-  oneLineReview?: string
-  detailedReview?: string
+  one_line_review?: string
+  detailed_review?: string
   tags?: string[]
-  watchLocation?: string
-  watchMethod?: "theater" | "ott" | "tv" | "other"
-  watchedWith?: string
-  isBestMovie?: boolean
+  watch_location?: string
+  watch_method?: "theater" | "ott" | "tv" | "other"
+  watched_with?: string
+  is_best_movie?: boolean
   progress?: number // minutes watched (for status: "watching")
 }
 
@@ -46,10 +50,16 @@ export interface MovieDetail extends Movie {
 export interface User {
   id: string
   email: string
-  displayName?: string
-  avatarUrl?: string
-  yearlyGoal?: number
-  createdAt?: Date | string
+  display_name?: string
+  avatar_url?: string
+  avatar_storage_url?: string
+  yearly_goal?: number
+  auth_provider?: string
+  auth_methods?: string[]
+  email_verified?: boolean
+  has_password?: boolean
+  created_at?: Date | string
+  updated_at?: Date | string
 }
 
 // ============================================
@@ -73,15 +83,15 @@ export interface TagStat {
 }
 
 export interface UserStats {
-  totalWatched: number
-  totalWatchTime: number // minutes
-  averageRating: number
-  currentStreak: number // days
-  yearlyGoal: number
-  currentYearCount: number
-  monthlyData: MonthlyData[]
-  genreBreakdown: GenreStat[]
-  topTags: TagStat[]
+  total_watched: number
+  total_watch_time: number // minutes
+  average_rating: number
+  current_streak: number // days
+  yearly_goal: number
+  current_year_count: number
+  monthly_data: MonthlyData[]
+  genre_breakdown: GenreStat[]
+  top_tags: TagStat[]
 }
 
 // ============================================
@@ -92,9 +102,10 @@ export interface Collection {
   id: number
   name: string
   description?: string
-  movieCount: number
-  isAuto?: boolean
-  createdAt?: Date | string
+  movie_count: number
+  is_auto?: boolean
+  created_at?: Date | string
+  updated_at?: Date | string
 }
 
 export interface CollectionDetail extends Collection {
@@ -102,19 +113,75 @@ export interface CollectionDetail extends Collection {
 }
 
 // ============================================
+// Streak & Calendar Types
+// ============================================
+
+export interface StreakData {
+  current_streak: number
+  longest_streak: number
+  streak_type: string // 'daily' | 'weekly' | 'custom'
+  streak_min_days: number
+  last_watch_date?: string
+  is_active_today: boolean
+  streak_dates: string[] // current week dates for HomeScreen
+  current_streak_start?: string
+  current_streak_end?: string
+  longest_streak_start?: string
+  longest_streak_end?: string
+  weekly_watch_count: number
+}
+
+export interface StreakDates {
+  year: number
+  month: number
+  dates: string[] // "YYYY-MM-DD" format
+}
+
+export interface CalendarDay {
+  date: string // "YYYY-MM-DD"
+  movie_count: number
+  movies?: { id: number; title: string; poster_url?: string }[]
+}
+
+export interface CalendarData {
+  year: number
+  month: number
+  days: CalendarDay[]
+}
+
+export interface StreakSettings {
+  notification_enabled: boolean
+  notification_time?: string // "HH:MM"
+  timezone?: string
+}
+
+// ============================================
 // Navigation Types
 // ============================================
 
 export type RootStackParamList = {
-  Main: undefined
+  Login: undefined
+  EmailLogin: undefined
+  SignUp: undefined
+  ForgotPassword: undefined
+  Main: NavigatorScreenParams<TabParamList> | undefined
   MovieDetail: { id: number }
   MovieSearch: undefined
+  Collections: undefined
   CollectionDetail: { id: number }
+  EditProfile: undefined
+  About: undefined
+  Help: undefined
+  Terms: undefined
+  Privacy: undefined
+  StreakDetail: undefined
+  WatchCalendar: undefined
+  WatchCalendarSettings: undefined
 }
 
 export type TabParamList = {
   Home: undefined
-  Movies: undefined
+  Movies: { initialFilter?: "all" | MovieStatus } | undefined
   Stats: undefined
   Profile: undefined
 }
@@ -143,13 +210,13 @@ export interface PaginatedResponse<T> {
 
 export interface MovieFormData {
   rating?: number
-  oneLineReview?: string
-  detailedReview?: string
-  watchDate?: Date
-  watchLocation?: string
-  watchMethod?: "theater" | "ott" | "tv" | "other"
-  watchedWith?: string
-  isBestMovie?: boolean
+  one_line_review?: string
+  detailed_review?: string
+  watch_date?: Date
+  watch_location?: string
+  watch_method?: "theater" | "ott" | "tv" | "other"
+  watched_with?: string
+  is_best_movie?: boolean
   tags?: string[]
   status: MovieStatus
 }

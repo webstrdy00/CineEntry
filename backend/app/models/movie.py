@@ -45,3 +45,16 @@ class Movie(Base):
 
     # Relationships
     user_movies = relationship("UserMovie", back_populates="movie", cascade="all, delete-orphan")
+
+    # Backward-compatible aliases used by API response builders
+    @property
+    def title(self) -> str:
+        return self.title_ko
+
+    @property
+    def original_title(self) -> str | None:
+        return self.title_original
+
+    @property
+    def year(self) -> int | None:
+        return self.production_year

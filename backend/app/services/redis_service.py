@@ -17,11 +17,14 @@ class RedisService:
     async def connect(self):
         """Redis 연결"""
         if not self.redis_client:
-            self.redis_client = await redis.from_url(
+            # redis.from_url()은 동기 함수 - await 제거
+            self.redis_client = redis.from_url(
                 settings.REDIS_URL,
                 encoding="utf-8",
                 decode_responses=True
             )
+            # 연결 테스트
+            await self.redis_client.ping()
 
     async def disconnect(self):
         """Redis 연결 종료"""
@@ -56,6 +59,30 @@ class RedisService:
             await self.connect()
 
         await self.redis_client.set(key, value, ex=ttl)
+
+    async def increment(self, key: str, ttl: int) -> int:
+        """
+        카운터를 1 증가시키고, 첫 생성 시 TTL을 설정합니다.
+        """
+        if not self.redis_client:
+            await self.connect()
+
+        count = await self.redis_client.incr(key)
+        if count == 1:
+            await self.redis_client.expire(key, ttl)
+        return int(count)
+
+    async def ttl(self, key: str) -> int:
+        """
+        키의 남은 TTL(초)을 반환합니다.
+        """
+        if not self.redis_client:
+            await self.connect()
+
+        ttl = await self.redis_client.ttl(key)
+        if ttl is None or ttl < 0:
+            return 0
+        return int(ttl)
 
     async def delete(self, key: str):
         """

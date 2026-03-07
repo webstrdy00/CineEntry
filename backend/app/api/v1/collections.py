@@ -9,7 +9,8 @@ from app.models.collection_movie import CollectionMovie
 from app.models.user_movie import UserMovie
 from app.models.movie import Movie
 from app.schemas.collection import (
-    CollectionCreate, CollectionUpdate, CollectionResponse, CollectionWithMovies
+    CollectionCreate, CollectionUpdate, CollectionResponse, CollectionWithMovies,
+    SimpleMovieInCollection
 )
 from app.schemas.common import BaseResponse
 from app.services.auto_collection_service import auto_collection_service
@@ -17,7 +18,13 @@ from app.services.auto_collection_service import auto_collection_service
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
-@router.get("/", response_model=List[CollectionResponse])
+def normalize_status_output(status: str | None) -> str | None:
+    if status in ("wishlist", "watchlist"):
+        return "watchlist"
+    return status
+
+
+@router.get("/", response_model=BaseResponse[List[CollectionResponse]])
 async def get_user_collections(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
@@ -25,6 +32,12 @@ async def get_user_collections(
     """
     Get all collections for the current user with movie count
     """
+    # 기존 사용자에게 자동 컬렉션이 없으면 생성
+    try:
+        auto_collection_service.create_default_collections(user_id, db)
+    except Exception:
+        pass
+
     collections = (
         db.query(
             Collection,
@@ -37,69 +50,121 @@ async def get_user_collections(
         .all()
     )
 
+    # 각 컬렉션별 상위 3개 포스터 URL 조회
+    collection_ids = [c.id for c, _ in collections]
+    preview_map: dict[int, list[str]] = {}
+
+    if collection_ids:
+        preview_query = (
+            db.query(
+                CollectionMovie.collection_id,
+                Movie.poster_url,
+            )
+            .join(UserMovie, CollectionMovie.user_movie_id == UserMovie.id)
+            .join(Movie, UserMovie.movie_id == Movie.id)
+            .filter(
+                CollectionMovie.collection_id.in_(collection_ids),
+                Movie.poster_url.isnot(None),
+            )
+            .order_by(CollectionMovie.collection_id, CollectionMovie.id.desc())
+            .all()
+        )
+
+        for cid, poster_url in preview_query:
+            if cid not in preview_map:
+                preview_map[cid] = []
+            if len(preview_map[cid]) < 3:
+                preview_map[cid].append(poster_url)
+
     result = []
     for collection, movie_count in collections:
         collection_dict = CollectionResponse(
             id=collection.id,
             name=collection.name,
             description=collection.description,
-            type=collection.type,
+            is_auto=collection.is_auto,
             cover_image_url=collection.cover_image_url,
             auto_rules=collection.auto_rules,
             user_id=collection.user_id,
             movie_count=movie_count,
+            preview_posters=preview_map.get(collection.id, []),
             created_at=collection.created_at,
             updated_at=collection.updated_at,
         )
         result.append(collection_dict)
 
-    return result
+    return BaseResponse(
+        success=True,
+        message="Collections retrieved successfully",
+        data=result
+    )
 
 
-@router.get("/{collection_id}", response_model=CollectionResponse)
+@router.get("/{collection_id}", response_model=BaseResponse[CollectionWithMovies])
 async def get_collection_detail(
     collection_id: int,
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
     """
-    Get detailed information about a specific collection
+    Get detailed information about a specific collection with movies list
     """
-    # Get collection with movie count
-    result = (
-        db.query(
-            Collection,
-            func.count(CollectionMovie.id).label("movie_count"),
-        )
-        .outerjoin(CollectionMovie, Collection.id == CollectionMovie.collection_id)
+    # Get collection
+    collection = (
+        db.query(Collection)
         .filter(Collection.id == collection_id, Collection.user_id == user_id)
-        .group_by(Collection.id)
         .first()
     )
 
-    if not result:
+    if not collection:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Collection not found",
         )
 
-    collection, movie_count = result
+    # Get movies in this collection with JOIN
+    movies_query = (
+        db.query(UserMovie, Movie)
+        .join(CollectionMovie, UserMovie.id == CollectionMovie.user_movie_id)
+        .join(Movie, UserMovie.movie_id == Movie.id)
+        .filter(CollectionMovie.collection_id == collection_id)
+        .all()
+    )
 
-    return CollectionResponse(
+    # Build movie response list (simplified format for Frontend)
+    movies = []
+    for user_movie, movie in movies_query:
+        movies.append(SimpleMovieInCollection(
+            id=user_movie.id,  # UserMovie ID
+            title=movie.title,
+            poster_url=movie.poster_url,
+            rating=user_movie.rating,
+            year=movie.year,
+            status=normalize_status_output(user_movie.status),
+        ))
+
+    collection_data = CollectionWithMovies(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
-        movie_count=movie_count,
+        movie_count=len(movies),
+        movies=movies,
         created_at=collection.created_at,
         updated_at=collection.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Collection retrieved successfully",
+        data=collection_data
+    )
 
-@router.post("/", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/", response_model=BaseResponse[CollectionResponse], status_code=status.HTTP_201_CREATED)
 async def create_collection(
     collection_data: CollectionCreate,
     db: Session = Depends(get_db),
@@ -111,9 +176,9 @@ async def create_collection(
     Request Body:
     - name: Collection name (required)
     - description: Collection description (optional)
-    - type: "manual" or "auto" (required)
+    - is_auto: True for auto collection, False for manual (default: False)
     - cover_image_url: Cover image URL (optional)
-    - auto_rules: Auto collection rules (JSONB, optional, only for type="auto")
+    - auto_rules: Auto collection rules (JSONB, optional, only for is_auto=True)
     """
     # Create collection
     collection = Collection(
@@ -125,11 +190,11 @@ async def create_collection(
     db.commit()
     db.refresh(collection)
 
-    return CollectionResponse(
+    collection_response = CollectionResponse(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
@@ -138,8 +203,14 @@ async def create_collection(
         updated_at=collection.updated_at,
     )
 
+    return BaseResponse(
+        success=True,
+        message="Collection created successfully",
+        data=collection_response
+    )
 
-@router.put("/{collection_id}", response_model=CollectionResponse)
+
+@router.put("/{collection_id}", response_model=BaseResponse[CollectionResponse])
 async def update_collection(
     collection_id: int,
     update_data: CollectionUpdate,
@@ -180,17 +251,23 @@ async def update_collection(
         CollectionMovie.collection_id == collection_id
     ).scalar()
 
-    return CollectionResponse(
+    collection_response = CollectionResponse(
         id=collection.id,
         name=collection.name,
         description=collection.description,
-        type=collection.type,
+        is_auto=collection.is_auto,
         cover_image_url=collection.cover_image_url,
         auto_rules=collection.auto_rules,
         user_id=collection.user_id,
         movie_count=movie_count,
         created_at=collection.created_at,
         updated_at=collection.updated_at,
+    )
+
+    return BaseResponse(
+        success=True,
+        message="Collection updated successfully",
+        data=collection_response
     )
 
 
@@ -363,9 +440,9 @@ async def sync_auto_collection(
     """
     자동 컬렉션 동기화
 
-    auto_rule에 정의된 규칙에 따라 영화를 자동으로 추가/제거
+    auto_rules에 정의된 규칙에 따라 영화를 자동으로 추가/제거
 
-    auto_rule 예시:
+    auto_rules 예시:
     {
         "status": "completed",
         "rating": {"min": 4.0},
@@ -399,16 +476,16 @@ async def sync_auto_collection(
             detail="This is not an auto collection",
         )
 
-    # Check auto_rule exists
-    if not collection.auto_rule:
+    # Check auto_rules exists
+    if not collection.auto_rules:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Auto rule is not defined for this collection",
+            detail="Auto rules are not defined for this collection",
         )
 
     try:
-        # Validate auto_rule
-        auto_collection_service.validate_auto_rule(collection.auto_rule)
+        # Validate auto_rules
+        auto_collection_service.validate_auto_rule(collection.auto_rules)
 
         # Sync collection
         result = auto_collection_service.sync_auto_collection(collection_id, db)

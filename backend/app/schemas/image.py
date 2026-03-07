@@ -10,9 +10,9 @@ from pydantic import BaseModel
 class UserImageBase(BaseModel):
     """UserImage 기본 스키마"""
     user_movie_id: int
-    type: str  # "ticket" or "photocard"
+    image_type: str  # "ticket" or "photocard"
     image_url: str
-    caption: Optional[str] = None
+    thumbnail_url: Optional[str] = None
 
 
 class UserImageCreate(UserImageBase):
@@ -22,7 +22,7 @@ class UserImageCreate(UserImageBase):
 
 class UserImageUpdate(BaseModel):
     """UserImage 업데이트 스키마"""
-    caption: Optional[str] = None
+    thumbnail_url: Optional[str] = None
 
 
 class UserImageResponse(UserImageBase):
@@ -35,13 +35,22 @@ class UserImageResponse(UserImageBase):
 
 
 class UploadUrlRequest(BaseModel):
-    """S3 Presigned URL 요청"""
+    """업로드 Signed URL 요청"""
     file_name: str
     file_type: str  # "image/jpeg", "image/png", etc.
 
 
 class UploadUrlResponse(BaseModel):
-    """S3 Presigned URL 응답"""
+    """업로드 Signed URL 응답"""
     upload_url: str
-    file_url: str  # 업로드 후 사용할 public URL
+    file_url: str  # 업로드 직후 미리보기/즉시 조회용 Signed URL
+    file_key: str  # 내부 객체 키
+    storage_url: str  # DB에 저장할 영구 참조값 (gcs://bucket/key)
     expires_in: int  # seconds
+
+
+class StoredFileResponse(BaseModel):
+    """백엔드 업로드 완료 응답"""
+    file_url: str
+    file_key: str
+    storage_url: str
