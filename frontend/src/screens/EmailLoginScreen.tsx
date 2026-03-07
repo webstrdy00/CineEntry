@@ -39,10 +39,6 @@ const EmailLoginScreen = ({ navigation }: any) => {
 
       // AuthContext 업데이트
       setUser(result.user);
-
-      if (!result.user.email_verified) {
-        showAlert('이메일 인증 필요', '로그인은 완료되었지만 이메일 인증이 아직 끝나지 않았습니다. 프로필에서 인증 메일을 다시 보낼 수 있습니다.');
-      }
     } catch (error: any) {
       console.error('❌ 로그인 실패:', error);
 

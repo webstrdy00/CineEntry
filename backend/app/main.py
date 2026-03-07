@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from app.config import settings
 from app.services.redis_service import redis_service
 
 
@@ -19,18 +20,21 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CineEntry API",
+    title=settings.APP_NAME,
     description="Movie tracking app API with self-hosted JWT authentication",
-    version="1.0.0",
+    version=settings.APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
 
-# CORS 설정
+cors_origins = settings.get_cors_allowed_origins()
+if not cors_origins:
+    print("⚠️  CORS_ALLOWED_ORIGINS 또는 FRONTEND_URL이 비어 있어 브라우저 요청이 차단됩니다.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 개발 환경, 운영 환경에서는 구체적인 도메인 지정
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,7 +46,7 @@ async def root():
     """Root endpoint"""
     return {
         "message": "CineEntry API is running",
-        "version": "1.0.0",
+        "version": settings.APP_VERSION,
         "architecture": "Self-hosted JWT + PostgreSQL",
     }
 

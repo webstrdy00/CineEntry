@@ -525,6 +525,10 @@ export default function EditProfileScreen() {
                 <Text style={styles.accountInfoText}>이메일 인증이 아직 필요합니다</Text>
               </View>
 
+              <Text style={styles.accountHintText}>
+                지금 기기에서는 계속 사용할 수 있지만, 다음 이메일 로그인과 비밀번호 변경은 인증 후 가능합니다.
+              </Text>
+
               <TouchableOpacity
                 style={[styles.accountActionButton, isBusy && styles.accountActionButtonDisabled]}
                 onPress={() => void handleResendVerification()}
@@ -829,6 +833,13 @@ const styles = StyleSheet.create({
   accountInfoText: {
     fontSize: 14,
     color: COLORS.lightGray,
+  },
+  accountHintText: {
+    fontSize: 12,
+    color: COLORS.lightGray,
+    lineHeight: 18,
+    marginTop: -2,
+    marginBottom: 4,
   },
   accountActionButton: {
     flexDirection: "row",

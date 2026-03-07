@@ -5,6 +5,8 @@ Authentication Schemas
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
+from app.services.password_policy_service import PASSWORD_MAX_LENGTH
+
 
 # ===========================
 # 요청 스키마
@@ -13,7 +15,7 @@ from pydantic import BaseModel, EmailStr, Field
 class RegisterRequest(BaseModel):
     """이메일 회원가입 요청"""
     email: EmailStr
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
     display_name: str = Field(..., min_length=1, max_length=100)
 
 
@@ -31,7 +33,7 @@ class RefreshRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """비밀번호 변경 요청"""
     current_password: str
-    new_password: str = Field(..., min_length=6, max_length=100)
+    new_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class PasswordResetRequest(BaseModel):
@@ -42,7 +44,7 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     """비밀번호 재설정 완료 요청"""
     token: str
-    new_password: str = Field(..., min_length=6, max_length=100)
+    new_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class OAuthCallbackRequest(BaseModel):

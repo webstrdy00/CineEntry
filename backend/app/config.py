@@ -1,6 +1,7 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
 import secrets
+from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     FRONTEND_URL: str = "http://localhost:8081"  # 프론트엔드 URL (OAuth 콜백용)
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"  # 이메일 인증/재설정 링크용
+    CORS_ALLOWED_ORIGINS: Optional[str] = None
 
     # Database (Independent PostgreSQL)
     DATABASE_URL: str
@@ -29,6 +31,10 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_TOKEN_TTL_HOURS: int = 24
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
     AUTH_EMAIL_COOLDOWN_SECONDS: int = 60
+    AUTH_LOGIN_ATTEMPT_LIMIT: int = 10
+    AUTH_LOGIN_ATTEMPT_WINDOW_SECONDS: int = 600
+    AUTH_REGISTER_ATTEMPT_LIMIT: int = 5
+    AUTH_REGISTER_ATTEMPT_WINDOW_SECONDS: int = 3600
 
     # OAuth - Google
     GOOGLE_CLIENT_ID: Optional[str] = None
@@ -84,6 +90,39 @@ class Settings(BaseSettings):
         # 개발 환경용 임시 시크릿 (재시작시 변경됨)
         print("⚠️  JWT_SECRET_KEY가 설정되지 않았습니다. 임시 키를 사용합니다.")
         return secrets.token_urlsafe(32)
+
+    def get_cors_allowed_origins(self) -> list[str]:
+        """CORS 허용 origin 목록 반환"""
+        raw_origins: list[str] = []
+
+        if self.CORS_ALLOWED_ORIGINS:
+            raw_origins.extend(
+                origin.strip() for origin in self.CORS_ALLOWED_ORIGINS.split(",")
+            )
+        elif self.FRONTEND_URL:
+            raw_origins.append(self.FRONTEND_URL.strip())
+
+        if self.DEBUG:
+            raw_origins.extend(
+                [
+                    "http://localhost:3000",
+                    "http://localhost:8081",
+                    "http://127.0.0.1:8081",
+                    "http://localhost:19006",
+                    "http://127.0.0.1:19006",
+                ]
+            )
+
+        origins: list[str] = []
+        seen: set[str] = set()
+
+        for origin in raw_origins:
+            if not origin or origin == "*" or origin in seen:
+                continue
+            seen.add(origin)
+            origins.append(origin)
+
+        return origins
 
 
 # Global settings instance

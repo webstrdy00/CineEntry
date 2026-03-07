@@ -241,7 +241,7 @@ export default function ProfileScreen() {
             <Text style={styles.noticeTitle}>이메일 인증이 아직 완료되지 않았어요</Text>
           </View>
           <Text style={styles.noticeText}>
-            인증을 마치면 이메일 비밀번호 로그인과 비밀번호 재설정을 더 안전하게 사용할 수 있습니다.
+            지금 기기에서는 계속 사용할 수 있지만, 다음 이메일 로그인과 비밀번호 변경은 인증 후 가능합니다.
           </Text>
           <TouchableOpacity style={styles.noticeButton} onPress={() => void handleResendVerification()}>
             <Text style={styles.noticeButtonText}>인증 메일 다시 보내기</Text>

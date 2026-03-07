@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+venv/
+.venv/
+env/
+ENV/
+.env
+.env.*
+.omc/
+*.pyc
+*.pyo
+tests/
+gcp-key.json
+*gcp-key*.json

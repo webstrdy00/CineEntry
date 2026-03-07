@@ -14,12 +14,16 @@ class AuthFlowService:
     VERIFY_EMAIL_PREFIX = "auth:verify-email:token"
     PASSWORD_RESET_PREFIX = "auth:password-reset:token"
     COOLDOWN_PREFIX = "auth:flow:cooldown"
+    RATE_LIMIT_PREFIX = "auth:rate-limit"
 
     def _token_key(self, prefix: str, token: str) -> str:
         return f"{prefix}:{token}"
 
     def _cooldown_key(self, purpose: str, identity: str) -> str:
         return f"{self.COOLDOWN_PREFIX}:{purpose}:{identity}"
+
+    def _rate_limit_key(self, purpose: str, identity: str) -> str:
+        return f"{self.RATE_LIMIT_PREFIX}:{purpose}:{identity}"
 
     async def _create_token(self, prefix: str, payload: dict, ttl_seconds: int) -> str:
         token = secrets.token_urlsafe(32)
@@ -67,6 +71,28 @@ class AuthFlowService:
 
     async def set_cooldown(self, purpose: str, identity: str, ttl_seconds: int) -> None:
         await redis_service.set(self._cooldown_key(purpose, identity), "1", ttl_seconds)
+
+    async def get_rate_limit_count(self, purpose: str, identity: str) -> int:
+        value = await redis_service.get(self._rate_limit_key(purpose, identity))
+        if value is None:
+            return 0
+
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    async def get_rate_limit_retry_after(self, purpose: str, identity: str) -> int:
+        return await redis_service.ttl(self._rate_limit_key(purpose, identity))
+
+    async def record_rate_limit_attempt(self, purpose: str, identity: str, ttl_seconds: int) -> int:
+        return await redis_service.increment(
+            self._rate_limit_key(purpose, identity),
+            ttl_seconds,
+        )
+
+    async def clear_rate_limit(self, purpose: str, identity: str) -> None:
+        await redis_service.delete(self._rate_limit_key(purpose, identity))
 
 
 auth_flow_service = AuthFlowService()
