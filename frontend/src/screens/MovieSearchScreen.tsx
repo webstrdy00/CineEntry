@@ -18,7 +18,14 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
-import { searchMovies, addMovie, createMovieFromMetadata, getMovies } from "../services/movieService"
+import {
+  searchMovies,
+  addMovie,
+  createMovieFromMetadata,
+  getMovies,
+  mergeMovieMetadata,
+  type MovieMetadata,
+} from "../services/movieService"
 import { addTagToMovie, getTags, type Tag } from "../services/tagService"
 
 type MovieSearchScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
@@ -41,6 +48,7 @@ interface MovieSearchItem {
 
 interface LibraryMovieIdentity {
   title?: string | null
+  original_title?: string | null
   year?: number | null
   kobis_code?: string | null
   tmdb_id?: number | null
@@ -63,8 +71,15 @@ interface MovieDraft {
   source: string
 }
 
+const normalizeSearchText = (value?: string | null) =>
+  (value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .trim()
+    .replace(/[\p{P}\p{S}\s_]+/gu, "")
+
 const buildFallbackKey = (movie: Partial<MovieSearchItem>) =>
-  `${(movie.title || "").trim().toLowerCase()}::${movie.year ?? "na"}`
+  `${normalizeSearchText(movie.title)}::${normalizeSearchText(movie.original_title)}::${movie.year ?? "na"}`
 
 const getMovieIdentityKeys = (movie: Partial<MovieSearchItem>) => {
   const keys: string[] = []
@@ -76,6 +91,9 @@ const getMovieIdentityKeys = (movie: Partial<MovieSearchItem>) => {
 
   return keys
 }
+
+const getPrimaryMovieIdentityKey = (movie: Partial<MovieSearchItem>) =>
+  getMovieIdentityKeys(movie)[0] ?? `fallback:${buildFallbackKey(movie)}`
 
 const isMovieAddedWithLookup = (movie: Partial<MovieSearchItem>, lookup: Record<string, boolean>) =>
   getMovieIdentityKeys(movie).some((key) => lookup[key])
@@ -116,6 +134,22 @@ const createDraftFromItem = (movie: MovieSearchItem): MovieDraft => ({
   source: movie.source ?? "unknown",
 })
 
+const mergeMovieItemWithMetadata = (movie: MovieSearchItem, metadata: MovieMetadata): MovieSearchItem => ({
+  ...movie,
+  title: metadata.title ?? movie.title,
+  original_title: metadata.original_title ?? movie.original_title,
+  director: metadata.director ?? movie.director,
+  year: metadata.year ?? movie.year,
+  runtime: metadata.runtime ?? movie.runtime,
+  genre: metadata.genre ?? movie.genre,
+  poster_url: metadata.poster_url ?? movie.poster_url,
+  backdrop_url: metadata.backdrop_url ?? movie.backdrop_url,
+  synopsis: metadata.synopsis ?? movie.synopsis,
+  kobis_code: metadata.kobis_code ?? movie.kobis_code,
+  tmdb_id: metadata.tmdb_id ?? movie.tmdb_id,
+  kmdb_id: metadata.kmdb_id ?? movie.kmdb_id,
+})
+
 export default function MovieSearchScreen() {
   const navigation = useNavigation<MovieSearchScreenNavigationProp>()
   const insets = useSafeAreaInsets()
@@ -129,6 +163,7 @@ export default function MovieSearchScreen() {
   const [selectedMovie, setSelectedMovie] = useState<MovieSearchItem | null>(null)
   const [draft, setDraft] = useState<MovieDraft | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [preparingMovieKey, setPreparingMovieKey] = useState<string | null>(null)
 
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -156,6 +191,7 @@ export default function MovieSearchScreen() {
         libraryMovies.forEach((movie) => {
           const identityCandidate: Partial<MovieSearchItem> = {
             title: movie.title ?? undefined,
+            original_title: movie.original_title ?? undefined,
             year: movie.year ?? undefined,
             kobis_code: movie.kobis_code ?? undefined,
             tmdb_id: movie.tmdb_id ?? undefined,
@@ -255,15 +291,31 @@ export default function MovieSearchScreen() {
     await performSearch(query)
   }
 
-  const handleSelectMovie = (movie: MovieSearchItem) => {
-    setSelectedMovie(movie)
-    setDraft(createDraftFromItem(movie))
+  const handleSelectMovie = async (movie: MovieSearchItem) => {
+    const movieKey = getPrimaryMovieIdentityKey(movie)
+    if (preparingMovieKey) return
+
+    setPreparingMovieKey(movieKey)
     setSelectedTagIds([])
     void loadTags()
+
+    try {
+      const mergedMetadata = await mergeMovieMetadata(movie)
+      const mergedMovie = mergeMovieItemWithMetadata(movie, mergedMetadata)
+      setSelectedMovie(mergedMovie)
+      setDraft(createDraftFromItem(mergedMovie))
+    } catch (error) {
+      console.error("영화 메타데이터 병합 실패:", error)
+      setSelectedMovie(movie)
+      setDraft(createDraftFromItem(movie))
+      showAlert("안내", "상세 정보를 모두 불러오지 못해 현재 검색 결과로 등록 화면을 열었어요.")
+    } finally {
+      setPreparingMovieKey(null)
+    }
   }
 
   const handleBackFromEditor = (force: boolean = false) => {
-    if (isSaving && !force) return
+    if ((isSaving || preparingMovieKey) && !force) return
     setSelectedMovie(null)
     setDraft(null)
     setSelectedTagIds([])
@@ -290,6 +342,7 @@ export default function MovieSearchScreen() {
 
     const duplicateCandidate: Partial<MovieSearchItem> = {
       title,
+      original_title: toOptionalString(draft.original_title),
       year: parseOptionalInt(draft.year),
       kobis_code: toOptionalString(draft.kobis_code),
       tmdb_id: draft.tmdb_id ?? undefined,
@@ -360,12 +413,21 @@ export default function MovieSearchScreen() {
 
   const renderMovieItem = ({ item }: { item: MovieSearchItem }) => {
     const alreadyAdded = isMovieAdded(item)
+    const isPreparing = preparingMovieKey === getPrimaryMovieIdentityKey(item)
+    const isSelectionLocked = Boolean(preparingMovieKey)
 
     return (
       <TouchableOpacity
-        style={[styles.movieItem, alreadyAdded && styles.movieItemAdded]}
-        onPress={() => handleSelectMovie(item)}
+        style={[
+          styles.movieItem,
+          alreadyAdded && styles.movieItemAdded,
+          isSelectionLocked && styles.movieItemDisabled,
+        ]}
+        onPress={() => {
+          void handleSelectMovie(item)
+        }}
         activeOpacity={0.85}
+        disabled={isSelectionLocked}
       >
         {item.poster_url ? (
           <Image source={{ uri: item.poster_url }} style={styles.poster} />
@@ -400,7 +462,11 @@ export default function MovieSearchScreen() {
           </View>
         )}
 
-        <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
+        {isPreparing ? (
+          <ActivityIndicator size="small" color={COLORS.gold} />
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={COLORS.lightGray} />
+        )}
       </TouchableOpacity>
     )
   }
@@ -411,7 +477,7 @@ export default function MovieSearchScreen() {
         <Ionicons name="search" size={20} color={COLORS.lightGray} />
         <TextInput
           style={styles.searchInput}
-          placeholder="영화 제목, 감독 검색..."
+          placeholder="영화 제목으로 검색..."
           placeholderTextColor={COLORS.lightGray}
           value={searchQuery}
           onChangeText={(text) => {
@@ -448,7 +514,7 @@ export default function MovieSearchScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="search" size={64} color={COLORS.lightGray} />
           <Text style={styles.emptyTitle}>영화를 검색해보세요</Text>
-          <Text style={styles.emptySubtitle}>검색 결과를 눌러 등록할 수 있어요</Text>
+          <Text style={styles.emptySubtitle}>제목이나 제목+연도로 찾으면 더 정확해요</Text>
         </View>
       ) : loading ? (
         <View style={styles.emptyContainer}>
@@ -459,7 +525,7 @@ export default function MovieSearchScreen() {
         <View style={styles.emptyContainer}>
           <Ionicons name="film-outline" size={64} color={COLORS.lightGray} />
           <Text style={styles.emptyTitle}>검색 결과가 없습니다</Text>
-          <Text style={styles.emptySubtitle}>다른 검색어를 시도해보세요</Text>
+          <Text style={styles.emptySubtitle}>영화 제목 위주로 다시 검색해보세요</Text>
         </View>
       ) : (
         <FlatList
@@ -764,6 +830,9 @@ const styles = StyleSheet.create({
   movieItemAdded: {
     borderColor: "rgba(212, 175, 55, 0.52)",
     backgroundColor: COLORS.deepGray,
+  },
+  movieItemDisabled: {
+    opacity: 0.72,
   },
   poster: {
     width: 60,

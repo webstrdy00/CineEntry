@@ -20,15 +20,24 @@ class EmailService:
             return f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM_ADDRESS}>"
         return settings.EMAIL_FROM_ADDRESS
 
+    def _build_log_only_output(self, to_email: str, subject: str, preview_body: str) -> str:
+        return (
+            "\n"
+            "========== EMAIL_LOG_ONLY ==========\n"
+            f"to: {to_email}\n"
+            f"subject: {subject}\n"
+            f"log_only: {settings.EMAIL_LOG_ONLY}\n"
+            "body:\n"
+            f"{preview_body}\n"
+            "======== END EMAIL_LOG_ONLY ========\n"
+        )
+
     def send_email(self, to_email: str, subject: str, html_body: str, text_body: str | None = None) -> None:
         if settings.EMAIL_LOG_ONLY or not settings.SMTP_HOST:
-            logger.info(
-                "EMAIL_LOG_ONLY=%s, to=%s, subject=%s\n%s",
-                settings.EMAIL_LOG_ONLY,
-                to_email,
-                subject,
-                text_body or html_body,
-            )
+            preview_body = text_body or html_body
+            log_output = self._build_log_only_output(to_email, subject, preview_body)
+            print(log_output, flush=True)
+            logger.info(log_output)
             return
 
         message = EmailMessage()

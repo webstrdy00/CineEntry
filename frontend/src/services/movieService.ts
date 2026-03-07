@@ -29,6 +29,21 @@ export interface MovieSearchParams {
   q: string;
 }
 
+export interface MovieMetadata {
+  title: string;
+  original_title?: string | null;
+  director?: string | null;
+  year?: number | null;
+  runtime?: number | null;
+  genre?: string | null;
+  poster_url?: string | null;
+  backdrop_url?: string | null;
+  synopsis?: string | null;
+  kobis_code?: string | null;
+  tmdb_id?: number | null;
+  kmdb_id?: string | null;
+}
+
 const normalizeMovie = (movie: any) => ({
   ...movie,
   poster: movie?.poster ?? movie?.poster_url ?? null,
@@ -77,7 +92,12 @@ export const searchMovies = async (query: string) => {
 
 export const getMovieMetadata = async (source: 'kobis' | 'tmdb', movieId: string | number) => {
   const response = await api.get(`/api/v1/movies/metadata/${source}/${movieId}`);
-  return unwrapResponse<any>(response);
+  return unwrapResponse<MovieMetadata>(response);
+};
+
+export const mergeMovieMetadata = async (searchResult: any) => {
+  const response = await api.post('/api/v1/movies/metadata/merge', searchResult);
+  return unwrapResponse<MovieMetadata>(response);
 };
 
 export const createMovieFromMetadata = async (metadata: any) => {

@@ -134,6 +134,7 @@ class MovieSearchResult(BaseModel):
     runtime: Optional[int] = None
     genre: Optional[str] = None
     poster_url: Optional[str] = None
+    backdrop_url: Optional[str] = None
     synopsis: Optional[str] = None
     kobis_code: Optional[str] = None
     tmdb_id: Optional[int] = None

@@ -447,7 +447,7 @@ async def delete_movie(
     )
 
 
-@router.get("/metadata/{source}/{id}", response_model=MovieMetadata)
+@router.get("/metadata/{source}/{id}", response_model=BaseResponse[MovieMetadata])
 async def get_movie_metadata(
     source: str = Path(..., description="Source: 'kobis' or 'tmdb'"),
     id: str = Path(..., description="Movie ID (kobis_code or tmdb_id)"),
@@ -479,7 +479,34 @@ async def get_movie_metadata(
             detail="Movie metadata not found"
         )
 
-    return metadata
+    return BaseResponse(
+        success=True,
+        message="Movie metadata fetched successfully",
+        data=metadata,
+    )
+
+
+@router.post("/metadata/merge", response_model=BaseResponse[MovieMetadata])
+async def merge_movie_metadata(
+    search_result: MovieSearchResult,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Merge a search result with available source-specific detail metadata.
+
+    Request Body:
+    - search_result: Search result item with available external IDs
+
+    Returns:
+    - Canonical merged movie metadata for editor/save flow
+    """
+    metadata = await external_api_service.build_canonical_metadata_from_search_result(search_result)
+
+    return BaseResponse(
+        success=True,
+        message="Movie metadata merged successfully",
+        data=metadata,
+    )
 
 
 @router.post("/from-metadata", response_model=BaseResponse[MovieResponse], status_code=status.HTTP_201_CREATED)
