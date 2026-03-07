@@ -42,6 +42,7 @@ export default function EditProfileScreen() {
 
   const [displayName, setDisplayName] = useState("")
   const [avatarUrl, setAvatarUrl] = useState("")
+  const [avatarStorageUrl, setAvatarStorageUrl] = useState("")
   const [yearlyGoal, setYearlyGoal] = useState("")
   const [email, setEmail] = useState("")
   const [authProvider, setAuthProvider] = useState("")
@@ -58,7 +59,7 @@ export default function EditProfileScreen() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   // 원본 값 (변경 감지용)
-  const originalValues = useRef({ displayName: "", avatarUrl: "", yearlyGoal: "" })
+  const originalValues = useRef({ displayName: "", avatarValue: "", yearlyGoal: "" })
   const isBusy = saving || uploadingAvatar || isDeleting || sendingAccountMail
 
   const getErrorMessage = (error: unknown, fallback: string) => {
@@ -98,10 +99,13 @@ export default function EditProfileScreen() {
       const user = await getCurrentUser()
       const name = (user.display_name || "").trim()
       const avatar = (user.avatar_url || "").trim()
+      const avatarStorage = (user.avatar_storage_url || "").trim()
+      const avatarValue = avatarStorage || avatar
       const goal = user.yearly_goal?.toString() || "100"
 
       setDisplayName(name)
       setAvatarUrl(avatar)
+      setAvatarStorageUrl(avatarStorage)
       setYearlyGoal(goal)
       setEmail(user.email || "")
       setAuthProvider(user.auth_provider || "email")
@@ -110,7 +114,7 @@ export default function EditProfileScreen() {
       setHasPassword(!!user.has_password)
       setCreatedAt(user.created_at || "")
 
-      originalValues.current = { displayName: name, avatarUrl: avatar, yearlyGoal: goal }
+      originalValues.current = { displayName: name, avatarValue, yearlyGoal: goal }
     } catch (error) {
       showAlert("오류", getErrorMessage(error, "사용자 정보를 불러오지 못했습니다."), [
         { text: "확인", onPress: () => navigation.goBack() },
@@ -123,7 +127,7 @@ export default function EditProfileScreen() {
   const hasChanges = () => {
     return (
       displayName.trim() !== originalValues.current.displayName ||
-      avatarUrl.trim() !== originalValues.current.avatarUrl ||
+      (avatarStorageUrl.trim() || avatarUrl.trim()) !== originalValues.current.avatarValue ||
       yearlyGoal.trim() !== originalValues.current.yearlyGoal
     )
   }
@@ -146,16 +150,20 @@ export default function EditProfileScreen() {
 
     try {
       setSaving(true)
-      const trimmedAvatar = avatarUrl.trim()
-      await updateUserProfile({
+      const trimmedAvatar = avatarStorageUrl.trim() || avatarUrl.trim()
+      const updatedUser = await updateUserProfile({
         display_name: trimmedName,
         avatar_url: trimmedAvatar ? trimmedAvatar : null,
         yearly_goal: goalNum,
       })
+      const nextAvatarUrl = (updatedUser.avatar_url || "").trim()
+      const nextAvatarStorageUrl = (updatedUser.avatar_storage_url || "").trim()
+      setAvatarUrl(nextAvatarUrl)
+      setAvatarStorageUrl(nextAvatarStorageUrl)
       await refreshUser()
       originalValues.current = {
         displayName: trimmedName,
-        avatarUrl: trimmedAvatar,
+        avatarValue: nextAvatarStorageUrl || nextAvatarUrl,
         yearlyGoal: goalNum.toString(),
       }
       navigation.goBack()
@@ -217,27 +225,55 @@ export default function EditProfileScreen() {
     try {
       setUploadingAvatar(true)
 
-      // 1. Presigned URL 받기
-      const presignedRes = await api.post("/api/v1/media/upload", {
-        file_name: fileName,
-        file_type: fileType,
-      })
-      const { upload_url, file_url } = unwrapResponse<{ upload_url: string; file_url: string }>(presignedRes)
+      let fileUrl = ""
+      let storageUrl = ""
 
-      // 2. S3에 업로드
-      const imageResponse = await fetch(asset.uri)
-      const blob = await imageResponse.blob()
-      const uploadResponse = await fetch(upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": fileType },
-        body: blob,
-      })
-      if (!uploadResponse.ok) {
-        throw new Error(`업로드 실패 (${uploadResponse.status})`)
+      if (Platform.OS === "web") {
+        const imageResponse = await fetch(asset.uri)
+        const blob = await imageResponse.blob()
+        const formData = new FormData()
+        formData.append("file", blob, fileName)
+
+        const uploadRes = await api.post("/api/v1/media/upload-file", formData)
+
+        const result = unwrapResponse<{
+          file_url: string
+          storage_url: string
+        }>(uploadRes)
+
+        fileUrl = result.file_url
+        storageUrl = result.storage_url
+      } else {
+        // 1. 업로드 Signed URL 받기
+        const presignedRes = await api.post("/api/v1/media/upload", {
+          file_name: fileName,
+          file_type: fileType,
+        })
+        const result = unwrapResponse<{
+          upload_url: string
+          file_url: string
+          storage_url: string
+        }>(presignedRes)
+
+        // 2. GCS에 업로드
+        const imageResponse = await fetch(asset.uri)
+        const blob = await imageResponse.blob()
+        const uploadResponse = await fetch(result.upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": fileType },
+          body: blob,
+        })
+        if (!uploadResponse.ok) {
+          throw new Error(`업로드 실패 (${uploadResponse.status})`)
+        }
+
+        fileUrl = result.file_url
+        storageUrl = result.storage_url
       }
 
       // 3. avatar_url 업데이트
-      setAvatarUrl(file_url)
+      setAvatarUrl(fileUrl)
+      setAvatarStorageUrl(storageUrl)
     } catch (error) {
       console.error("아바타 업로드 실패:", error)
       const fallback =
@@ -259,7 +295,14 @@ export default function EditProfileScreen() {
 
     showAlert("프로필 이미지 제거", "기본 프로필 이미지로 되돌리시겠습니까?", [
       { text: "취소", style: "cancel" },
-      { text: "제거", style: "destructive", onPress: () => setAvatarUrl("") },
+      {
+        text: "제거",
+        style: "destructive",
+        onPress: () => {
+          setAvatarUrl("")
+          setAvatarStorageUrl("")
+        },
+      },
     ])
   }
 

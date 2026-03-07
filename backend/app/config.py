@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     KOBIS_API_KEY: Optional[str] = None
     KMDB_API_KEY: Optional[str] = None
 
+    # Google Cloud Storage (optional)
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+    GCP_BUCKET_NAME: Optional[str] = None
+    GCP_SIGNED_URL_EXPIRATION_SECONDS: int = 900
+
     # AWS S3 (optional)
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None

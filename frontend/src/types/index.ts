@@ -52,6 +52,7 @@ export interface User {
   email: string
   display_name?: string
   avatar_url?: string
+  avatar_storage_url?: string
   yearly_goal?: number
   auth_provider?: string
   auth_methods?: string[]

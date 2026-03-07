@@ -38,6 +38,7 @@ from app.services.auth_service import (
     verify_refresh_token,
 )
 from app.services.auto_collection_service import auto_collection_service
+from app.services.response_serializers import serialize_auth_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -77,16 +78,7 @@ def _provider_label(provider: str) -> str:
 
 
 def _build_auth_user_response(user: User) -> AuthUserResponse:
-    return AuthUserResponse(
-        id=str(user.id),
-        email=user.email,
-        display_name=user.display_name,
-        avatar_url=user.avatar_url,
-        auth_provider=user.auth_provider or "email",
-        auth_methods=user.auth_methods,
-        email_verified=user.email_verified,
-        has_password=user.has_password,
-    )
+    return serialize_auth_user(user)
 
 
 async def _queue_verification_email(background_tasks: BackgroundTasks, user: User) -> None:

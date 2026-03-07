@@ -9,6 +9,7 @@ export interface User {
   email: string;
   display_name?: string | null;
   avatar_url?: string | null;
+  avatar_storage_url?: string | null;
   yearly_goal?: number;
   auth_provider?: string;
   auth_methods?: string[];

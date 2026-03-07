@@ -56,6 +56,7 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     """User 응답 스키마"""
     id: UUID
+    avatar_storage_url: Optional[str] = None
     yearly_goal: int
     auth_provider: Optional[str] = "email"
     auth_methods: list[str] = Field(default_factory=list)

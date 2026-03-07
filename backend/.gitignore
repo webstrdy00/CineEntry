@@ -32,6 +32,8 @@ env/
 # Environment Variables
 .env
 .env.local
+gcp-key.json
+*gcp-key*.json
 
 # IDEs
 .vscode/

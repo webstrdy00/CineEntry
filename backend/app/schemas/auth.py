@@ -69,6 +69,7 @@ class AuthUserResponse(BaseModel):
     email: str
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    avatar_storage_url: Optional[str] = None
     auth_provider: str
     auth_methods: list[str] = Field(default_factory=list)
     email_verified: bool

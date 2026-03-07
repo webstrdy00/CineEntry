@@ -122,6 +122,12 @@ api.interceptors.request.use(
       }
     }
 
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (config.headers && 'Content-Type' in config.headers) {
+        delete (config.headers as any)['Content-Type'];
+      }
+    }
+
     // FastAPI trailing slash 처리
     if (config.url && !config.url.match(/\/\d+/) && !config.url.endsWith('/')) {
       const specialPaths = ['/search', '/metadata', '/from-metadata', '/sync', '/popular', '/monthly', '/genres', '/best-movies', '/me', '/tags', '/callback', '/auth', '/streak', '/calendar', '/settings'];

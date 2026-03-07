@@ -15,6 +15,7 @@ export interface AuthUser {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
+  avatar_storage_url?: string | null;
   auth_provider: string;
   auth_methods: string[];
   email_verified: boolean;

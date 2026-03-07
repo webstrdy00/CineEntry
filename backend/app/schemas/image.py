@@ -35,14 +35,22 @@ class UserImageResponse(UserImageBase):
 
 
 class UploadUrlRequest(BaseModel):
-    """S3 Presigned URL 요청"""
+    """업로드 Signed URL 요청"""
     file_name: str
     file_type: str  # "image/jpeg", "image/png", etc.
 
 
 class UploadUrlResponse(BaseModel):
-    """S3 Presigned URL 응답"""
+    """업로드 Signed URL 응답"""
     upload_url: str
-    file_url: str  # 업로드 후 사용할 public URL
-    file_key: str  # S3 파일 키 (삭제 시 필요)
+    file_url: str  # 업로드 직후 미리보기/즉시 조회용 Signed URL
+    file_key: str  # 내부 객체 키
+    storage_url: str  # DB에 저장할 영구 참조값 (gcs://bucket/key)
     expires_in: int  # seconds
+
+
+class StoredFileResponse(BaseModel):
+    """백엔드 업로드 완료 응답"""
+    file_url: str
+    file_key: str
+    storage_url: str
