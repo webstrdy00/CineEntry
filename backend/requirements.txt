@@ -1,0 +1,35 @@
+# FastAPI and Web Server
+fastapi==0.109.1
+uvicorn[standard]==0.24.0
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Authentication
+pyjwt[crypto]==2.8.0
+cryptography==46.0.5
+httpx==0.25.1
+passlib[bcrypt]==1.7.4
+
+# External APIs
+redis==5.0.1
+
+# AWS S3 (optional)
+boto3==1.29.7
+
+# Google Cloud Storage (optional)
+google-cloud-storage>=2.16,<3.0
+
+# Configuration
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-multipart==0.0.9
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==24.3.0
+flake8==6.1.0

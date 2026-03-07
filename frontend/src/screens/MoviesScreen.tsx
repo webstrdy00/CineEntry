@@ -1,99 +1,193 @@
-"use client"
-
-import { useState } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, FlatList } from "react-native"
+import { useState, useMemo, useCallback, useEffect } from "react"
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Image, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
-import { useNavigation } from "@react-navigation/native"
+import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import type { RouteProp } from "@react-navigation/native"
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs"
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
+import { COLORS } from "../constants/colors"
+import FilterChip from "../components/FilterChip"
+import type { RootStackParamList, TabParamList, MovieStatus } from "../types"
+import { getMovies } from "../services/movieService"
 
-const COLORS = {
-  darkNavy: "#1a1d29",
-  deepGray: "#2d2f3e",
-  gold: "#d4af37",
-  red: "#e74c3c",
-  white: "#ffffff",
-  lightGray: "#a0a0a0",
-}
+type MoviesScreenRootNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type MoviesScreenTabNavigationProp = BottomTabNavigationProp<TabParamList, "Movies">
+type MoviesScreenRouteProp = RouteProp<TabParamList, "Movies">
 
 export default function MoviesScreen() {
-  const navigation = useNavigation()
+  const rootNavigation = useNavigation<MoviesScreenRootNavigationProp>()
+  const tabNavigation = useNavigation<MoviesScreenTabNavigationProp>()
+  const route = useRoute<MoviesScreenRouteProp>()
+  const insets = useSafeAreaInsets()
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedFilter, setSelectedFilter] = useState("all")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
+  const [selectedFilter, setSelectedFilter] = useState<"all" | MovieStatus>("all")
+  const [movies, setMovies] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(false)
 
-  const movies = [
-    {
-      id: 1,
-      title: "오펜하이머",
-      poster: "https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
-      rating: 4.5,
-      status: "watching",
-    },
-    {
-      id: 2,
-      title: "기생충",
-      poster: "https://image.tmdb.org/t/p/w500/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg",
-      rating: 5,
-      status: "completed",
-    },
-    {
-      id: 3,
-      title: "인터스텔라",
-      poster: "https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
-      rating: 4.8,
-      status: "completed",
-    },
-    {
-      id: 4,
-      title: "타이타닉",
-      poster: "https://image.tmdb.org/t/p/w500/9xjZS2rlVxm8SFx8kPC3aIGCOYQ.jpg",
-      rating: 4.2,
-      status: "watchlist",
-    },
-    {
-      id: 5,
-      title: "라라랜드",
-      poster: "https://image.tmdb.org/t/p/w500/uDO8zWDhfWwoFdKS4fzkUJt0Rf0.jpg",
-      rating: 4.6,
-      status: "completed",
-    },
-    {
-      id: 6,
-      title: "듄: 파트2",
-      poster: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
-      rating: 0,
-      status: "watchlist",
-    },
+  // Debounce search query (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Home의 "더 보기"에서 전달한 초기 필터 적용
+  useEffect(() => {
+    const initialFilter = route.params?.initialFilter
+    if (!initialFilter) return
+
+    setSelectedFilter(initialFilter)
+
+    // 초기 필터는 1회성으로만 적용하고 즉시 제거
+    tabNavigation.setParams({ initialFilter: undefined })
+  }, [route.params?.initialFilter, tabNavigation])
+
+  // Load movies on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      loadMovies()
+    }, [selectedFilter])
+  )
+
+  const loadMovies = async () => {
+    try {
+      setLoading(true)
+      setError(false)
+      const status = selectedFilter === "all" ? undefined : selectedFilter
+      const data = await getMovies(status)
+      setMovies(data)
+    } catch (error) {
+      console.error('❌ 영화 목록 로드 실패:', error)
+      setMovies([])
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await loadMovies()
+    setRefreshing(false)
+  }, [selectedFilter])
+
+  const filters: Array<{ id: "all" | MovieStatus; label: string }> = [
+    { id: "all", label: "전체" },
+    { id: "watchlist", label: "보고 싶은" },
+    { id: "watching", label: "보는 중" },
+    { id: "completed", label: "본 영화" },
   ]
 
-  const filters = [
-    { id: "all", label: "전체", icon: "apps" },
-    { id: "watching", label: "보는 중", icon: "play-circle" },
-    { id: "completed", label: "완료", icon: "checkmark-circle" },
-    { id: "watchlist", label: "보고 싶은", icon: "bookmark" },
-  ]
+  // Filter and search logic
+  const filteredMovies = useMemo(() => {
+    let result = movies
 
-  const renderMovieCard = ({ item }) => (
-    <TouchableOpacity style={styles.movieCard} onPress={() => navigation.navigate("MovieDetail", { id: item.id })}>
-      <Image source={{ uri: item.poster }} style={styles.moviePoster} />
-      <View style={styles.movieCardOverlay}>
-        {item.rating > 0 && (
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={12} color={COLORS.gold} />
-            <Text style={styles.ratingText}>{item.rating}</Text>
+    // Apply status filter
+    if (selectedFilter !== "all") {
+      result = result.filter((movie) => movie.status === selectedFilter)
+    }
+
+    // Apply search filter (debounced)
+    if (debouncedSearchQuery.trim()) {
+      const query = debouncedSearchQuery.toLowerCase().trim()
+      result = result.filter((movie) => movie.title.toLowerCase().includes(query))
+    }
+
+    return result
+  }, [movies, selectedFilter, debouncedSearchQuery])
+
+  const getStatusLabel = (status?: string) => {
+    if (status === "watching") return "보는 중"
+    if (status === "completed") return "본 영화"
+    return "보고 싶은"
+  }
+
+  const getStatusStyle = (status?: string) => {
+    if (status === "watching") {
+      return {
+        chip: styles.statusChipWatching,
+        text: styles.statusChipTextWatching,
+      }
+    }
+    if (status === "completed") {
+      return {
+        chip: styles.statusChipCompleted,
+        text: styles.statusChipTextCompleted,
+      }
+    }
+    return {
+      chip: styles.statusChipWatchlist,
+      text: styles.statusChipTextWatchlist,
+    }
+  }
+
+  const renderMovieItem = useCallback(
+    ({ item }: { item: typeof movies[0] }) => {
+      const statusStyle = getStatusStyle(item.status)
+
+      return (
+        <TouchableOpacity
+          style={styles.movieItem}
+          activeOpacity={0.8}
+          onPress={() => rootNavigation.navigate("MovieDetail", { id: item.id })}
+        >
+          {item.poster_url || item.poster ? (
+            <Image
+              source={{ uri: item.poster_url || item.poster }}
+              style={styles.poster}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.poster, styles.posterPlaceholder]}>
+              <Ionicons name="film-outline" size={22} color={COLORS.lightGray} />
+            </View>
+          )}
+
+          <View style={styles.movieInfo}>
+            <Text style={styles.movieTitle} numberOfLines={1}>
+              {item.title}
+            </Text>
+            {!!item.original_title && item.original_title !== item.title && (
+              <Text style={styles.originalTitle} numberOfLines={1}>
+                {item.original_title}
+              </Text>
+            )}
+
+            <View style={styles.metaRow}>
+              <View style={[styles.statusChip, statusStyle.chip]}>
+                <Text style={[styles.statusChipText, statusStyle.text]}>
+                  {getStatusLabel(item.status)}
+                </Text>
+              </View>
+
+              {item.rating != null && item.rating > 0 && (
+                <View style={styles.ratingRow}>
+                  <Ionicons name="star" size={14} color={COLORS.gold} />
+                  <Text style={styles.ratingText}>{Number(item.rating).toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
           </View>
-        )}
-      </View>
-      <Text style={styles.movieCardTitle} numberOfLines={2}>
-        {item.title}
-      </Text>
-    </TouchableOpacity>
+
+          <Ionicons name="chevron-forward" size={18} color={COLORS.lightGray} />
+        </TouchableOpacity>
+      )
+    },
+    [rootNavigation]
   )
 
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.headerTitle}>내 영화</Text>
-        <TouchableOpacity>
+        <TouchableOpacity onPress={() => rootNavigation.navigate("MovieSearch")}>
           <Ionicons name="add-circle" size={28} color={COLORS.gold} />
         </TouchableOpacity>
       </View>
@@ -111,34 +205,56 @@ export default function MoviesScreen() {
       </View>
 
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersContainer}>
+      <View style={styles.filtersContainer}>
         {filters.map((filter) => (
-          <TouchableOpacity
+          <FilterChip
             key={filter.id}
-            style={[styles.filterButton, selectedFilter === filter.id && styles.filterButtonActive]}
+            label={filter.label}
+            isActive={selectedFilter === filter.id}
             onPress={() => setSelectedFilter(filter.id)}
-          >
-            <Ionicons
-              name={filter.icon}
-              size={18}
-              color={selectedFilter === filter.id ? COLORS.darkNavy : COLORS.gold}
-            />
-            <Text style={[styles.filterText, selectedFilter === filter.id && styles.filterTextActive]}>
-              {filter.label}
-            </Text>
-          </TouchableOpacity>
+          />
         ))}
-      </ScrollView>
+      </View>
 
-      {/* Movies Grid */}
-      <FlatList
-        data={movies}
-        renderItem={renderMovieCard}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={2}
-        contentContainerStyle={styles.moviesGrid}
-        showsVerticalScrollIndicator={false}
-      />
+      {/* Movies List */}
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.gold} />
+          <Text style={styles.loadingText}>영화 목록을 불러오는 중...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
+          <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+          <TouchableOpacity
+            onPress={loadMovies}
+            style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+          >
+            <Ionicons name="refresh" size={18} color={COLORS.gold} />
+            <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredMovies}
+          renderItem={renderMovieItem}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.moviesList}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="film-outline" size={64} color={COLORS.lightGray} />
+              <Text style={styles.emptyTitle}>영화를 찾을 수 없습니다</Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery ? "다른 검색어를 시도해보세요" : "영화를 추가해보세요"}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   )
 }
@@ -153,7 +269,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
   },
   headerTitle: {
@@ -178,67 +293,126 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   filtersContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 8,
   },
-  filterButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    gap: 6,
-  },
-  filterButtonActive: {
-    backgroundColor: COLORS.gold,
-  },
-  filterText: {
-    color: COLORS.gold,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  filterTextActive: {
-    color: COLORS.darkNavy,
-  },
-  moviesGrid: {
+  moviesList: {
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  movieCard: {
-    flex: 1,
-    margin: 6,
-    maxWidth: "48%",
-  },
-  moviePoster: {
-    width: "100%",
-    aspectRatio: 2 / 3,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  movieCardOverlay: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-  },
-  ratingBadge: {
+  movieItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(26, 29, 41, 0.9)",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: COLORS.deepGray,
     borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 12,
+  },
+  poster: {
+    width: 56,
+    height: 84,
+    borderRadius: 8,
+    backgroundColor: COLORS.deepGray,
+  },
+  posterPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: COLORS.deepGray,
+  },
+  movieInfo: {
+    flex: 1,
+  },
+  movieTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.white,
+  },
+  originalTitle: {
+    fontSize: 13,
+    color: COLORS.lightGray,
+    marginTop: 2,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+  },
+  statusChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  statusChipWatchlist: {
+    backgroundColor: "rgba(212, 175, 55, 0.14)",
+    borderColor: "rgba(212, 175, 55, 0.45)",
+  },
+  statusChipWatching: {
+    backgroundColor: "rgba(93, 173, 226, 0.16)",
+    borderColor: "rgba(93, 173, 226, 0.5)",
+  },
+  statusChipCompleted: {
+    backgroundColor: "rgba(88, 214, 141, 0.16)",
+    borderColor: "rgba(88, 214, 141, 0.5)",
+  },
+  statusChipText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  statusChipTextWatchlist: {
+    color: COLORS.gold,
+  },
+  statusChipTextWatching: {
+    color: COLORS.watchingBlue,
+  },
+  statusChipTextCompleted: {
+    color: COLORS.completedGreen,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   ratingText: {
-    color: COLORS.white,
     fontSize: 12,
-    fontWeight: "bold",
-  },
-  movieCardTitle: {
-    fontSize: 14,
     color: COLORS.white,
-    fontWeight: "500",
+    fontWeight: "600",
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: COLORS.white,
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: COLORS.lightGray,
+    textAlign: "center",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: COLORS.lightGray,
+    marginTop: 12,
   },
 })
