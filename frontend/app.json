@@ -19,7 +19,7 @@
     "plugins": [
       "expo-asset",
       "expo-font",
-      "expo-media-library\\"
+      "expo-media-library"
     ]
   }
 }
