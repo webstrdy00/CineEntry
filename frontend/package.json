@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@types/react": "~18.3.12",
+    "@types/react": "~19.2.0",
     "baseline-browser-mapping": "^2.9.3",
     "typescript": "^5.3.3"
   },

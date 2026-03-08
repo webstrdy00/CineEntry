@@ -1,0 +1,9 @@
+[build]
+  base = "frontend"
+  command = "npm ci && ./node_modules/.bin/expo export --platform web --output-dir dist"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
