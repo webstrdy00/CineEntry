@@ -12,19 +12,24 @@ import { COLORS } from '../constants/colors';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { getGoogleAuthUrl, getKakaoAuthUrl } from '../services/authService';
+import { useAuth } from '../contexts/AuthContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
+type LoginProvider = 'google' | 'kakao' | null;
+
 const LoginScreen = ({ navigation }: any) => {
   const { showAlert } = useAlert();
-  const [loading, setLoading] = useState(false);
+  const { handleAuthRedirectUrl } = useAuth();
+  const [loadingProvider, setLoadingProvider] = useState<LoginProvider>(null);
+  const isLoading = loadingProvider !== null;
 
   // Google 로그인
   const handleGoogleLogin = async () => {
     try {
-      setLoading(true);
+      setLoadingProvider('google');
 
-      const { url } = await getGoogleAuthUrl();
+      const { url } = await getGoogleAuthUrl(Platform.OS === 'web' ? 'web' : 'mobile');
 
       console.log('🔗 Google 로그인 시작:', url);
 
@@ -37,7 +42,7 @@ const LoginScreen = ({ navigation }: any) => {
         );
 
         if (result.type === 'success' && result.url) {
-          // AuthContext의 deep link 핸들러가 처리
+          await handleAuthRedirectUrl(result.url);
           console.log('🔗 Google OAuth 콜백 URL:', result.url);
         }
       }
@@ -45,16 +50,16 @@ const LoginScreen = ({ navigation }: any) => {
       console.error('❌ Google 로그인 실패:', error.message);
       showAlert('로그인 실패', error.message || 'Google 로그인에 실패했습니다.');
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   };
 
   // Kakao 로그인
   const handleKakaoLogin = async () => {
     try {
-      setLoading(true);
+      setLoadingProvider('kakao');
 
-      const { url } = await getKakaoAuthUrl();
+      const { url } = await getKakaoAuthUrl(Platform.OS === 'web' ? 'web' : 'mobile');
 
       console.log('🔗 Kakao 로그인 시작:', url);
 
@@ -67,6 +72,7 @@ const LoginScreen = ({ navigation }: any) => {
         );
 
         if (result.type === 'success' && result.url) {
+          await handleAuthRedirectUrl(result.url);
           console.log('🔗 Kakao OAuth 콜백 URL:', result.url);
         }
       }
@@ -74,7 +80,7 @@ const LoginScreen = ({ navigation }: any) => {
       console.error('❌ Kakao 로그인 실패:', error.message);
       showAlert('로그인 실패', error.message || 'Kakao 로그인에 실패했습니다.');
     } finally {
-      setLoading(false);
+      setLoadingProvider(null);
     }
   };
 
@@ -93,9 +99,9 @@ const LoginScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={styles.loginButton}
           onPress={handleGoogleLogin}
-          disabled={loading}
+          disabled={isLoading}
         >
-          {loading ? (
+          {loadingProvider === 'google' ? (
             <ActivityIndicator color={COLORS.gold} />
           ) : (
             <>
@@ -109,17 +115,23 @@ const LoginScreen = ({ navigation }: any) => {
         <TouchableOpacity
           style={styles.loginButton}
           onPress={handleKakaoLogin}
-          disabled={loading}
+          disabled={isLoading}
         >
-          <Ionicons name="chatbubble" size={24} color={COLORS.gold} />
-          <Text style={styles.loginButtonText}>Kakao로 계속하기</Text>
+          {loadingProvider === 'kakao' ? (
+            <ActivityIndicator color={COLORS.gold} />
+          ) : (
+            <>
+              <Ionicons name="chatbubble" size={24} color={COLORS.gold} />
+              <Text style={styles.loginButtonText}>Kakao로 계속하기</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* 이메일 로그인 */}
         <TouchableOpacity
           style={styles.loginButton}
           onPress={() => navigation.navigate('EmailLogin')}
-          disabled={loading}
+          disabled={isLoading}
         >
           <Ionicons name="mail-outline" size={24} color={COLORS.gold} />
           <Text style={styles.loginButtonText}>이메일로 계속하기</Text>
@@ -131,7 +143,7 @@ const LoginScreen = ({ navigation }: any) => {
         <Text style={styles.footerText}>계정이 없으신가요?</Text>
         <TouchableOpacity
           onPress={() => navigation.navigate('SignUp')}
-          disabled={loading}
+          disabled={isLoading}
         >
           <Text style={styles.footerLink}>가입하기</Text>
         </TouchableOpacity>

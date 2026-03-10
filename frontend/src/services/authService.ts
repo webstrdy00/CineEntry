@@ -217,11 +217,17 @@ export interface OAuthUrlResponse {
   state: string;
 }
 
+export type OAuthClient = 'web' | 'mobile';
+
 /**
  * Google OAuth URL 가져오기
  */
-export const getGoogleAuthUrl = async (): Promise<OAuthUrlResponse> => {
-  const response = await api.get(`${AUTH_BASE}/google`);
+export const getGoogleAuthUrl = async (
+  client: OAuthClient = 'web'
+): Promise<OAuthUrlResponse> => {
+  const response = await api.get(`${AUTH_BASE}/google`, {
+    params: { client },
+  });
   return response.data.data as OAuthUrlResponse;
 };
 
@@ -243,8 +249,12 @@ export const handleGoogleCallback = async (
 /**
  * Kakao OAuth URL 가져오기
  */
-export const getKakaoAuthUrl = async (): Promise<OAuthUrlResponse> => {
-  const response = await api.get(`${AUTH_BASE}/kakao`);
+export const getKakaoAuthUrl = async (
+  client: OAuthClient = 'web'
+): Promise<OAuthUrlResponse> => {
+  const response = await api.get(`${AUTH_BASE}/kakao`, {
+    params: { client },
+  });
   return response.data.data as OAuthUrlResponse;
 };
 

@@ -487,7 +487,10 @@ export default function MovieSearchScreen() {
               setSearchResults([])
             }
           }}
-          returnKeyType="done"
+          onSubmitEditing={() => {
+            void handleSearch()
+          }}
+          returnKeyType="search"
           autoFocus
         />
 

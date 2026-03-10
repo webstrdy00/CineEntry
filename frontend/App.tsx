@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { Ionicons } from "@expo/vector-icons"
 import { ActivityIndicator, View, StyleSheet } from "react-native"
-import { SafeAreaProvider } from "react-native-safe-area-context"
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
 import { AlertProvider } from "./src/components/CustomAlert"
@@ -37,6 +37,10 @@ const Tab = createBottomTabNavigator<TabParamList>()
 const Stack = createNativeStackNavigator<RootStackParamList>()
 
 function TabNavigator() {
+  const insets = useSafeAreaInsets()
+  const tabBarBottomPadding = Math.max(insets.bottom, 8)
+  const tabBarHeight = 60 + insets.bottom
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -44,8 +48,8 @@ function TabNavigator() {
         tabBarStyle: {
           backgroundColor: COLORS.deepGray,
           borderTopWidth: 0,
-          height: 60,
-          paddingBottom: 8,
+          height: tabBarHeight,
+          paddingBottom: tabBarBottomPadding,
           paddingTop: 8,
         },
         tabBarActiveTintColor: COLORS.gold,
