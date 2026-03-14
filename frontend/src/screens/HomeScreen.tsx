@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import { LinearGradient } from "expo-linear-gradient"
@@ -23,6 +24,7 @@ type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
   const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
   const { showAlert } = useAlert()
   const currentYear = new Date().getFullYear()
 
@@ -455,12 +457,12 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <View style={styles.bottomPadding} />
+        <View style={[styles.bottomPadding, { height: tabBarHeight + 60 }]} />
       </ScrollView>
 
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={styles.floatingButton}
+        style={[styles.floatingButton, { bottom: tabBarHeight + 20 }]}
         onPress={() => navigation.navigate("MovieSearch")}
         activeOpacity={0.8}
       >

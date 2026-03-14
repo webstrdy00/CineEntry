@@ -50,15 +50,30 @@ from app.services.response_serializers import serialize_auth_user
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # OAuth state 임시 저장 (프로덕션에서는 Redis 사용 권장)
-_oauth_states: dict[str, str] = {}
+_oauth_states: dict[str, tuple[str, str]] = {}
 
 
-def _consume_oauth_state(state: str | None, provider: str) -> None:
+def _normalize_oauth_client(client: str | None) -> str:
+    normalized = (client or "web").strip().lower()
+    if normalized not in {"web", "mobile"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="지원하지 않는 OAuth 클라이언트입니다.",
+        )
+    return normalized
+
+
+def _store_oauth_state(state: str, provider: str, client: str) -> None:
+    _oauth_states[state] = (provider, client)
+
+
+def _consume_oauth_state(state: str | None, provider: str) -> str:
     """
     OAuth state 1회용 검증/소비.
 
     - state 누락 차단
     - provider 불일치 차단 (google state를 kakao에 재사용 방지)
+    - web/mobile redirect 대상 불일치 방지
     - 재사용 차단(pop)
     """
     if not state:
@@ -67,12 +82,21 @@ def _consume_oauth_state(state: str | None, provider: str) -> None:
             detail="state 값이 필요합니다.",
         )
 
-    saved_provider = _oauth_states.pop(state, None)
+    saved_state = _oauth_states.pop(state, None)
+    if not saved_state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않은 state입니다.",
+        )
+
+    saved_provider, saved_client = saved_state
     if saved_provider != provider:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="유효하지 않은 state입니다.",
         )
+
+    return saved_client
 
 
 def _provider_label(provider: str) -> str:
@@ -86,6 +110,86 @@ def _provider_label(provider: str) -> str:
 
 def _build_auth_user_response(user: User) -> AuthUserResponse:
     return serialize_auth_user(user)
+
+
+def _get_oauth_redirect_uri(provider: str, client: str) -> str:
+    if client == "mobile":
+        return (
+            f"{settings.BACKEND_PUBLIC_URL.rstrip('/')}"
+            f"/api/v1/auth/{provider}/mobile/callback"
+        )
+
+    return f"{settings.FRONTEND_URL.rstrip('/')}/auth/{provider}/callback"
+
+
+def _build_app_callback_url(
+    provider: str,
+    *,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> str:
+    params = {
+        key: value
+        for key, value in {
+            "code": code,
+            "state": state,
+            "error": error,
+            "error_description": error_description,
+        }.items()
+        if value
+    }
+    query = urlencode(params)
+    base_url = f"cineentry://auth/{provider}/callback"
+    return f"{base_url}?{query}" if query else base_url
+
+
+def _render_mobile_oauth_bridge_page(
+    provider: str,
+    *,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> HTMLResponse:
+    provider_label = _provider_label(provider)
+    action_href = _build_app_callback_url(
+        provider,
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+    )
+
+    if error:
+        description = error_description or (
+            f"{provider_label} 로그인 완료를 처리하지 못했습니다. 앱으로 돌아가 다시 시도해주세요."
+        )
+        return _render_status_page(
+            f"{provider_label} 로그인 실패",
+            description,
+            success=False,
+            action_href=action_href,
+            action_label="앱으로 돌아가기",
+        )
+
+    if not code or not state:
+        return _render_status_page(
+            f"{provider_label} 로그인 실패",
+            "로그인 응답 값이 올바르지 않습니다. 앱에서 다시 시도해주세요.",
+            success=False,
+            action_href=action_href,
+            action_label="앱으로 돌아가기",
+        )
+
+    return _render_status_page(
+        f"{provider_label} 로그인 연결 완료",
+        "앱으로 돌아가 로그인을 마무리하고 있습니다.",
+        success=True,
+        action_href=action_href,
+        action_label="앱으로 돌아가기",
+    )
 
 
 def _get_client_ip(http_request: Request) -> str:
@@ -1495,19 +1599,21 @@ async def password_reset_page(
 # ===========================
 
 @router.get("/google", response_model=BaseResponse[OAuthUrlResponse])
-async def google_auth_start():
+async def google_auth_start(client: str = Query("web")):
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Google 로그인이 설정되지 않았습니다.",
         )
 
+    oauth_client = _normalize_oauth_client(client)
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = "google"
+    _store_oauth_state(state, "google", oauth_client)
+    redirect_uri = _get_oauth_redirect_uri("google", oauth_client)
 
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": f"{settings.FRONTEND_URL}/auth/google/callback",
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": "openid email profile",
         "state": state,
@@ -1524,12 +1630,29 @@ async def google_auth_start():
     )
 
 
+@router.get("/google/mobile/callback", response_class=HTMLResponse)
+async def google_mobile_callback_bridge(
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None),
+    error_description: str | None = Query(None),
+):
+    return _render_mobile_oauth_bridge_page(
+        "google",
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+    )
+
+
 @router.post("/google/callback", response_model=BaseResponse[LoginResponse])
 async def google_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    _consume_oauth_state(request.state, "google")
+    oauth_client = _consume_oauth_state(request.state, "google")
+    redirect_uri = _get_oauth_redirect_uri("google", oauth_client)
 
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
@@ -1539,7 +1662,7 @@ async def google_auth_callback(
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "code": request.code,
                 "grant_type": "authorization_code",
-                "redirect_uri": f"{settings.FRONTEND_URL}/auth/google/callback",
+                "redirect_uri": redirect_uri,
             },
         )
 
@@ -1621,19 +1744,21 @@ async def google_auth_callback(
 # ===========================
 
 @router.get("/kakao", response_model=BaseResponse[OAuthUrlResponse])
-async def kakao_auth_start():
+async def kakao_auth_start(client: str = Query("web")):
     if not settings.KAKAO_CLIENT_ID:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="Kakao 로그인이 설정되지 않았습니다.",
         )
 
+    oauth_client = _normalize_oauth_client(client)
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = "kakao"
+    _store_oauth_state(state, "kakao", oauth_client)
+    redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)
 
     params = {
         "client_id": settings.KAKAO_CLIENT_ID,
-        "redirect_uri": f"{settings.FRONTEND_URL}/auth/kakao/callback",
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "state": state,
     }
@@ -1647,12 +1772,29 @@ async def kakao_auth_start():
     )
 
 
+@router.get("/kakao/mobile/callback", response_class=HTMLResponse)
+async def kakao_mobile_callback_bridge(
+    code: str | None = Query(None),
+    state: str | None = Query(None),
+    error: str | None = Query(None),
+    error_description: str | None = Query(None),
+):
+    return _render_mobile_oauth_bridge_page(
+        "kakao",
+        code=code,
+        state=state,
+        error=error,
+        error_description=error_description,
+    )
+
+
 @router.post("/kakao/callback", response_model=BaseResponse[LoginResponse])
 async def kakao_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    _consume_oauth_state(request.state, "kakao")
+    oauth_client = _consume_oauth_state(request.state, "kakao")
+    redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)
 
     async with httpx.AsyncClient() as client:
         token_response = await client.post(
@@ -1661,7 +1803,7 @@ async def kakao_auth_callback(
                 "grant_type": "authorization_code",
                 "client_id": settings.KAKAO_CLIENT_ID,
                 "client_secret": settings.KAKAO_CLIENT_SECRET or "",
-                "redirect_uri": f"{settings.FRONTEND_URL}/auth/kakao/callback",
+                "redirect_uri": redirect_uri,
                 "code": request.code,
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
