@@ -3,7 +3,6 @@ import { NavigationContainer } from "@react-navigation/native"
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import { Ionicons } from "@expo/vector-icons"
-import { ActivityIndicator, View, StyleSheet } from "react-native"
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { AuthProvider, useAuth } from "./src/contexts/AuthContext"
@@ -29,6 +28,7 @@ import PrivacyScreen from "./src/screens/PrivacyScreen"
 import StreakDetailScreen from "./src/screens/StreakDetailScreen"
 import WatchCalendarScreen from "./src/screens/WatchCalendarScreen"
 import WatchCalendarSettingsScreen from "./src/screens/WatchCalendarSettingsScreen"
+import AppLoadingScreen from "./src/components/AppLoadingScreen"
 
 import type { RootStackParamList, TabParamList } from "./src/types"
 import { COLORS } from "./src/constants/colors"
@@ -191,17 +191,20 @@ function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.gold} />
-      </View>
+      <>
+        <StatusBar style="light" />
+        <AppLoadingScreen />
+      </>
     )
   }
 
   return (
-    <NavigationContainer>
+    <>
       <StatusBar style="light" />
-      {isAuthenticated ? <MainStack /> : <AuthStack />}
-    </NavigationContainer>
+      <NavigationContainer>
+        {isAuthenticated ? <MainStack /> : <AuthStack />}
+      </NavigationContainer>
+    </>
   )
 }
 
@@ -216,12 +219,3 @@ export default function App() {
     </SafeAreaProvider>
   )
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.darkNavy,
-  },
-})

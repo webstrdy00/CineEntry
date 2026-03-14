@@ -3,9 +3,16 @@
     "name": "CineEntry",
     "slug": "cineentry",
     "version": "1.0.0",
+    "icon": "./assets/branding/cineentry-app-icon.png",
     "orientation": "portrait",
+    "backgroundColor": "#1a1d29",
     "userInterfaceStyle": "dark",
     "scheme": "cineentry",
+    "splash": {
+      "image": "./assets/branding/cineentry-logo-splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1d29"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -15,6 +22,10 @@
     },
     "android": {
       "package": "com.cineentry.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/branding/cineentry-symbol.png",
+        "backgroundColor": "#E7E8E4"
+      },
       "permissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -23,6 +34,9 @@
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO"
       ]
+    },
+    "web": {
+      "favicon": "./assets/branding/cineentry-app-icon.png"
     },
     "plugins": [
       "expo-asset",

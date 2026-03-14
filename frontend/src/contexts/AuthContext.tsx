@@ -32,6 +32,8 @@ const AuthContext = createContext<AuthContextType>({
   handleAuthRedirectUrl: async () => {},
 });
 
+const MIN_BOOT_LOADING_MS = 700;
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -118,6 +120,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
 
     const initAuth = async () => {
+      const startedAt = Date.now();
+      const finishLoading = async () => {
+        const remainingMs = MIN_BOOT_LOADING_MS - (Date.now() - startedAt);
+
+        if (remainingMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
+
+        if (mounted) {
+          setLoading(false);
+        }
+      };
+
       try {
         console.log('🚀 initAuth 시작');
 
@@ -126,9 +141,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (!accessToken) {
           console.log('📱 저장된 토큰 없음');
-          if (mounted) {
-            setLoading(false);
-          }
+          await finishLoading();
           return;
         }
 
@@ -143,14 +156,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.log('❌ 토큰 만료 또는 유효하지 않음');
             await clearTokens();
           }
-          setLoading(false);
         }
+        await finishLoading();
       } catch (error) {
         console.error('❌ initAuth 실패:', error);
         if (mounted) {
           await clearTokens();
-          setLoading(false);
         }
+        await finishLoading();
       }
     };
 
