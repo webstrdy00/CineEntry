@@ -689,10 +689,11 @@ def _render_status_page(
         action_button = f'<div class="action-row"><a class="button-link" href="{escaped_href}">{escape(action_label)}</a></div>'
         helper_note = "앱이 자동으로 열리지 않으면 버튼을 눌러주세요."
         if action_href.startswith("cineentry://"):
+            js_href = json.dumps(action_href, ensure_ascii=False)
             auto_open_script = f"""
             <script>
               setTimeout(function () {{
-                window.location.href = "{escaped_href}";
+                window.location.href = {js_href};
               }}, 250);
             </script>
             """
