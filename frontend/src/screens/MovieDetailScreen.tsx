@@ -694,12 +694,10 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         {status === "watching" && (
           <View style={styles.statusSection}>
             <View style={styles.timelineCard}>
-              {/* 세로 연결선 — 첫 번째 노드 중심부터 마지막 노드 중심까지 */}
-              <View style={styles.timelineLine} />
-
               {/* 상단 노드: 시청 시작 + 날짜 */}
               <TouchableOpacity style={styles.timelineRow} onPress={() => openStartDateModal(movie.watch_date)} disabled={isSaving}>
                 <View style={styles.timelineNodeColumn}>
+                  <View style={styles.timelineLineBelowNode} />
                   <View style={styles.timelineNodeFilled} />
                 </View>
                 <View style={styles.timelineContent}>
@@ -710,7 +708,9 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
               {/* 중간 영역: 프로그레스 */}
               <TouchableOpacity style={styles.timelineRow} onPress={openProgressModal} disabled={isSaving}>
-                <View style={styles.timelineNodeColumn} />
+                <View style={styles.timelineNodeColumn}>
+                  <View style={styles.timelineLineFull} />
+                </View>
                 <View style={styles.timelineProgressContent}>
                   <View style={styles.timelineProgressBarTrack}>
                     <View style={[styles.timelineProgressBarFill, { width: `${watchingProgressPercent}%` }]} />
@@ -722,10 +722,11 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
               {/* 하단 노드: 시청 완료 */}
               <TouchableOpacity style={styles.timelineCompleteRow} onPress={openCompleteModal} disabled={isSaving}>
-                <View style={styles.timelineNodeColumn}>
+                <View style={[styles.timelineNodeColumn, styles.timelineNodeColumnBottom]}>
+                  <View style={styles.timelineLineAboveNode} />
                   <View style={styles.timelineNodeEmpty} />
                 </View>
-                <View style={styles.timelineContent}>
+                <View style={styles.timelineCompleteContent}>
                   <Text style={styles.timelineNodeLabel}>시청 완료</Text>
                 </View>
                 <Text style={styles.timelineCompleteAction}>완료 기록하기 →</Text>
@@ -1009,13 +1010,22 @@ const styles = StyleSheet.create({
     position: "relative" as const, borderRadius: 18, backgroundColor: STATUS_CARD_THEME.surface,
     borderWidth: 1, borderColor: STATUS_CARD_THEME.border, paddingHorizontal: 16, paddingVertical: 16,
   },
-  timelineLine: {
-    position: "absolute" as const, left: 26, top: 22, bottom: 22,
+  timelineRow: { flexDirection: "row", alignItems: "stretch" },
+  timelineCompleteRow: { flexDirection: "row", alignItems: "stretch" },
+  timelineNodeColumn: { width: 20, alignItems: "center", justifyContent: "flex-start", position: "relative" as const },
+  timelineNodeColumnBottom: { justifyContent: "flex-end" },
+  timelineLineBelowNode: {
+    position: "absolute" as const, left: 9, top: 6, bottom: 0,
     width: 2, backgroundColor: STATUS_CARD_THEME.progressTrack,
   },
-  timelineRow: { flexDirection: "row", alignItems: "flex-start" },
-  timelineCompleteRow: { flexDirection: "row", alignItems: "center" },
-  timelineNodeColumn: { width: 20, alignItems: "center", zIndex: 1 },
+  timelineLineFull: {
+    position: "absolute" as const, left: 9, top: 0, bottom: 0,
+    width: 2, backgroundColor: STATUS_CARD_THEME.progressTrack,
+  },
+  timelineLineAboveNode: {
+    position: "absolute" as const, left: 9, top: 0, bottom: 6,
+    width: 2, backgroundColor: STATUS_CARD_THEME.progressTrack,
+  },
   timelineNodeFilled: {
     width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.gold,
   },
@@ -1024,6 +1034,7 @@ const styles = StyleSheet.create({
     borderColor: STATUS_CARD_THEME.mutedText, backgroundColor: STATUS_CARD_THEME.surface,
   },
   timelineContent: { flex: 1, paddingLeft: 10, paddingBottom: 14 },
+  timelineCompleteContent: { flex: 1, paddingLeft: 10, paddingTop: 1 },
   timelineNodeLabel: { color: STATUS_CARD_THEME.secondaryText, fontSize: 13, fontWeight: "700" },
   timelineNodeDate: { color: STATUS_CARD_THEME.primaryText, fontSize: 15, fontWeight: "600", marginTop: 2 },
   timelineProgressContent: { flex: 1, paddingLeft: 10, paddingVertical: 10 },
@@ -1033,7 +1044,7 @@ const styles = StyleSheet.create({
   timelineProgressBarFill: { height: "100%" as const, borderRadius: 5, backgroundColor: COLORS.gold },
   timelineProgressLabel: { color: STATUS_CARD_THEME.primaryText, fontSize: 13, fontWeight: "700", marginTop: 6 },
   timelineDaysLabel: { color: STATUS_CARD_THEME.mutedText, fontSize: 12, fontWeight: "600", marginTop: 2 },
-  timelineCompleteAction: { color: COLORS.gold, fontSize: 13, fontWeight: "700", marginLeft: "auto" as const },
+  timelineCompleteAction: { color: COLORS.gold, fontSize: 13, fontWeight: "700", marginLeft: "auto" as const, alignSelf: "center" },
   completedCard: {
     borderRadius: 18, backgroundColor: STATUS_CARD_THEME.surface, borderWidth: 1,
     borderColor: STATUS_CARD_THEME.border, paddingHorizontal: 16, paddingVertical: 16,

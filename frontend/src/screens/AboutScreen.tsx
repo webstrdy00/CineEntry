@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons"
 import { useNavigation } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
+import BrandMark from "../components/BrandMark"
 import { COLORS } from "../constants/colors"
 import type { RootStackParamList } from "../types"
 
@@ -67,11 +68,7 @@ export default function AboutScreen() {
 
       {/* App Identity */}
       <View style={styles.identityArea}>
-        <View style={styles.logoContainer}>
-          <Ionicons name="film" size={48} color={COLORS.gold} />
-        </View>
-        <Text style={styles.appName}>CineEntry</Text>
-        <Text style={styles.tagline}>나만의 영화 기록 앱</Text>
+        <BrandMark width={232} subtitle="나만의 영화 기록 앱" />
         <View style={styles.versionBadge}>
           <Text style={styles.versionText}>v{APP_VERSION}</Text>
         </View>
@@ -203,29 +200,6 @@ const styles = StyleSheet.create({
   identityArea: {
     alignItems: "center",
     paddingVertical: 28,
-  },
-  logoContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: 22,
-    backgroundColor: COLORS.deepGray,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(212,175,55,0.2)",
-  },
-  appName: {
-    fontSize: 26,
-    fontWeight: "bold",
-    color: COLORS.white,
-    marginBottom: 6,
-    letterSpacing: 1,
-  },
-  tagline: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-    marginBottom: 12,
   },
   versionBadge: {
     backgroundColor: "rgba(212,175,55,0.12)",

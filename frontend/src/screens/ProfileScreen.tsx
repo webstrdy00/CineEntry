@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator
 import { useAlert } from "../components/CustomAlert"
 import UserAvatar from "../components/UserAvatar"
 import { Ionicons } from "@expo/vector-icons"
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
 import Constants from "expo-constants"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -20,6 +21,7 @@ type IoniconName = keyof typeof Ionicons.glyphMap
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>()
   const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
   const { signOut } = useAuth()
   const { showAlert } = useAlert()
 
@@ -301,7 +303,7 @@ export default function ProfileScreen() {
         <Text style={styles.versionText}>{`앱 버전 v${appVersion}`}</Text>
       </View>
 
-      <View style={styles.bottomPadding} />
+      <View style={[styles.bottomPadding, { height: tabBarHeight + 40 }]} />
     </ScrollView>
   )
 }

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
 import { useState, useCallback } from "react"
 import { useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -16,6 +17,7 @@ const GENRE_COLORS = [COLORS.gold, COLORS.red, COLORS.chartBlue, COLORS.chartGre
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
   const { showAlert } = useAlert()
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() // 0-indexed
@@ -350,7 +352,7 @@ export default function StatsScreen() {
         )}
       </View>
 
-      <View style={styles.bottomPadding} />
+      <View style={[styles.bottomPadding, { height: tabBarHeight + 12 }]} />
     </ScrollView>
   )
 }

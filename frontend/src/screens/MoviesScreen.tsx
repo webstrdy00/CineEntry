@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react"
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Image, RefreshControl } from "react-native"
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
 import { Ionicons } from "@expo/vector-icons"
 import { useNavigation, useFocusEffect, useRoute } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -20,6 +21,7 @@ export default function MoviesScreen() {
   const tabNavigation = useNavigation<MoviesScreenTabNavigationProp>()
   const route = useRoute<MoviesScreenRouteProp>()
   const insets = useSafeAreaInsets()
+  const tabBarHeight = useBottomTabBarHeight()
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
   const [selectedFilter, setSelectedFilter] = useState<"all" | MovieStatus>("all")
@@ -239,7 +241,7 @@ export default function MoviesScreen() {
           data={filteredMovies}
           renderItem={renderMovieItem}
           keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.moviesList}
+          contentContainerStyle={[styles.moviesList, { paddingBottom: tabBarHeight + 20 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />

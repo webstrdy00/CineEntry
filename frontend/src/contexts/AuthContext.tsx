@@ -1,5 +1,6 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import { setOnUnauthorized } from '../lib/api';
 import {
   AuthUser,
@@ -18,6 +19,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setUser: (user: AuthUser | null) => void;
+  handleAuthRedirectUrl: (url: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,16 +29,110 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
   refreshUser: async () => {},
   setUser: () => {},
+  handleAuthRedirectUrl: async () => {},
 });
+
+const MIN_BOOT_LOADING_MS = 700;
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const handledAuthUrlsRef = useRef<Map<string, Promise<void>>>(new Map());
+
+  const handleAuthRedirectUrl = async (url: string) => {
+    const normalizedUrl = url.trim();
+
+    if (!normalizedUrl || !normalizedUrl.includes('/auth/')) {
+      return;
+    }
+
+    const existingHandler = handledAuthUrlsRef.current.get(normalizedUrl);
+    if (existingHandler) {
+      return existingHandler;
+    }
+
+    const handlerPromise = (async () => {
+      console.log('🔗 Deep link received:', normalizedUrl);
+
+      const urlParts = normalizedUrl.split('?');
+      const params = new URLSearchParams(urlParts[1] || '');
+      const error = params.get('error');
+      const errorDescription = params.get('error_description');
+
+      try {
+        if (normalizedUrl.includes('/auth/email/verified')) {
+          const currentUser = await getCurrentUser();
+          if (currentUser) {
+            setUser(currentUser);
+          }
+          return;
+        }
+
+        if (normalizedUrl.includes('/auth/password-reset-complete')) {
+          await clearTokens();
+          setUser(null);
+          return;
+        }
+
+        if (normalizedUrl.includes('/auth/google/callback')) {
+          if (error) {
+            throw new Error(errorDescription || 'Google 로그인에 실패했습니다.');
+          }
+
+          const code = params.get('code');
+          const state = params.get('state');
+
+          if (code) {
+            console.log('📱 Google OAuth 콜백 처리');
+            const result = await handleGoogleCallback(code, state || undefined);
+            setUser(result.user);
+            console.log('✅ Google 로그인 성공:', result.user.email);
+          }
+          return;
+        }
+
+        if (normalizedUrl.includes('/auth/kakao/callback')) {
+          if (error) {
+            throw new Error(errorDescription || 'Kakao 로그인에 실패했습니다.');
+          }
+
+          const code = params.get('code');
+          const state = params.get('state');
+
+          if (code) {
+            console.log('📱 Kakao OAuth 콜백 처리');
+            const result = await handleKakaoCallback(code, state || undefined);
+            setUser(result.user);
+            console.log('✅ Kakao 로그인 성공:', result.user.email);
+          }
+        }
+      } catch (error) {
+        console.error('❌ OAuth 콜백 처리 실패:', error);
+        throw error;
+      }
+    })();
+
+    handledAuthUrlsRef.current.set(normalizedUrl, handlerPromise);
+    return handlerPromise;
+  };
 
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
+      const startedAt = Date.now();
+      const finishLoading = async () => {
+        const remainingMs = MIN_BOOT_LOADING_MS - (Date.now() - startedAt);
+
+        if (remainingMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
+
+        if (mounted) {
+          setLoading(false);
+        }
+      };
+
       try {
         console.log('🚀 initAuth 시작');
 
@@ -45,9 +141,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         if (!accessToken) {
           console.log('📱 저장된 토큰 없음');
-          if (mounted) {
-            setLoading(false);
-          }
+          await finishLoading();
           return;
         }
 
@@ -62,14 +156,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.log('❌ 토큰 만료 또는 유효하지 않음');
             await clearTokens();
           }
-          setLoading(false);
         }
+        await finishLoading();
       } catch (error) {
         console.error('❌ initAuth 실패:', error);
         if (mounted) {
           await clearTokens();
-          setLoading(false);
         }
+        await finishLoading();
       }
     };
 
@@ -86,85 +180,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Deep Link 처리 (OAuth 콜백)
     let linkingSubscription: any;
 
-    const handleDeepLink = async (url: string) => {
-      console.log('🔗 Deep link received:', url);
-
-      try {
-        if (url.includes('/auth/email/verified')) {
-          const currentUser = await getCurrentUser();
-          if (currentUser) {
-            setUser(currentUser);
-          }
-          return;
-        }
-
-        if (url.includes('/auth/password-reset-complete')) {
-          await clearTokens();
-          setUser(null);
-          return;
-        }
-
-        // Google OAuth 콜백
-        if (url.includes('/auth/google/callback')) {
-          const urlParts = url.split('?');
-          if (urlParts.length > 1) {
-            const params = new URLSearchParams(urlParts[1]);
-            const code = params.get('code');
-            const state = params.get('state');
-
-            if (code) {
-              console.log('📱 Google OAuth 콜백 처리');
-              const result = await handleGoogleCallback(code, state || undefined);
-              setUser(result.user);
-              console.log('✅ Google 로그인 성공:', result.user.email);
-            }
-          }
-          return;
-        }
-
-        // Kakao OAuth 콜백
-        if (url.includes('/auth/kakao/callback')) {
-          const urlParts = url.split('?');
-          if (urlParts.length > 1) {
-            const params = new URLSearchParams(urlParts[1]);
-            const code = params.get('code');
-            const state = params.get('state');
-
-            if (code) {
-              console.log('📱 Kakao OAuth 콜백 처리');
-              const result = await handleKakaoCallback(code, state || undefined);
-              setUser(result.user);
-              console.log('✅ Kakao 로그인 성공:', result.user.email);
-            }
-          }
-          return;
-        }
-      } catch (error) {
-        console.error('❌ OAuth 콜백 처리 실패:', error);
-      }
-    };
-
     // 웹 환경에서 URL 파라미터 처리
-    if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.location !== 'undefined') {
       const url = window.location.href;
       if (url.includes('/auth/')) {
-        handleDeepLink(url).then(() => {
-          if (url.includes('code=') || url.includes('/auth/email/verified') || url.includes('/auth/password-reset-complete')) {
-            window.history.replaceState({}, document.title, '/');
-          }
-        });
+        handleAuthRedirectUrl(url)
+          .then(() => {
+            if (url.includes('code=') || url.includes('/auth/email/verified') || url.includes('/auth/password-reset-complete')) {
+              window.history.replaceState({}, document.title, '/');
+            }
+          })
+          .catch(() => {});
       }
     }
 
     // 모바일 환경에서 Deep Link 처리
-    if (typeof window === 'undefined') {
+    if (Platform.OS !== 'web') {
       linkingSubscription = Linking.addEventListener('url', ({ url }) => {
-        handleDeepLink(url);
+        handleAuthRedirectUrl(url).catch(() => {});
       });
 
       // 앱이 닫힌 상태에서 링크로 열린 경우
       Linking.getInitialURL().then((url) => {
-        if (url) handleDeepLink(url);
+        if (url) {
+          handleAuthRedirectUrl(url).catch(() => {});
+        }
       });
     }
 
@@ -195,6 +235,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         signOut,
         refreshUser,
         setUser,
+        handleAuthRedirectUrl,
       }}
     >
       {children}

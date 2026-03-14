@@ -134,7 +134,7 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
                 { transform: [{ translateY: slideAnim }] },
               ]}
             >
-              <Pressable onPress={(e) => e.stopPropagation()}>
+              <Pressable style={styles.alertContent} onPress={(e) => e.stopPropagation()}>
                 {/* Icon */}
                 <View style={styles.iconContainer}>
                   <Ionicons name={iconInfo.name} size={36} color={iconInfo.color} />
@@ -236,10 +236,23 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
                       {buttons.map((button, idx) => (
                         <TouchableOpacity
                           key={idx}
-                          style={[styles.button, styles.buttonFull, styles.buttonPrimary]}
+                          style={[
+                            styles.button,
+                            styles.buttonSingle,
+                            button.style === "cancel" && styles.buttonCancel,
+                            button.style === "destructive" && styles.buttonDestructive,
+                            button.style !== "cancel" && button.style !== "destructive" && styles.buttonPrimary,
+                          ]}
                           onPress={() => handleButtonPress(button)}
                         >
-                          <Text style={[styles.buttonText, styles.buttonTextPrimary]}>
+                          <Text
+                            style={[
+                              styles.buttonText,
+                              button.style === "cancel" && styles.buttonTextCancel,
+                              button.style === "destructive" && styles.buttonTextDestructive,
+                              button.style !== "cancel" && button.style !== "destructive" && styles.buttonTextPrimary,
+                            ]}
+                          >
                             {button.text}
                           </Text>
                         </TouchableOpacity>
@@ -271,20 +284,27 @@ const styles = StyleSheet.create({
   },
   alertContainer: {
     width: "100%",
-    maxWidth: 340,
+    maxWidth: Math.min(SCREEN_WIDTH - 40, 340),
     backgroundColor: COLORS.deepGray,
     borderRadius: 20,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 26,
+    alignItems: "center",
+  },
+  alertContent: {
+    width: "100%",
     alignItems: "center",
   },
   iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 18,
   },
   title: {
     fontSize: 17,
@@ -299,22 +319,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
     marginBottom: 20,
+    width: "100%",
   },
   buttonContainer: {
     width: "100%",
-    gap: 8,
+    gap: 10,
+    alignItems: "center",
   },
   buttonRow: {
     flexDirection: "row",
+    width: "100%",
+    gap: 10,
   },
   button: {
+    minHeight: 50,
+    paddingHorizontal: 18,
     paddingVertical: 13,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   buttonFull: {
     width: "100%",
+  },
+  buttonSingle: {
+    width: "68%",
+    maxWidth: 220,
+    minWidth: 160,
   },
   buttonHalf: {
     flex: 1,
