@@ -6,6 +6,7 @@ import api from '../lib/api';
 import { isAxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { isWebOAuthOnlyMode } from '../config/runtime';
 
 // ===========================
 // Types
@@ -73,12 +74,26 @@ const isAuthSessionInvalidError = (error: unknown) => {
 const ACCESS_TOKEN_KEY = 'cineentry_access_token';
 const REFRESH_TOKEN_KEY = 'cineentry_refresh_token';
 const AUTH_BASE = '/api/v1/auth';
+const WEB_AUTH_DISABLED_MESSAGE =
+  '웹에서는 모바일 앱 인증 브릿지만 지원합니다.';
+
+const assertInteractiveWebAuthEnabled = () => {
+  if (isWebOAuthOnlyMode) {
+    throw new Error(WEB_AUTH_DISABLED_MESSAGE);
+  }
+};
 
 /**
  * 토큰 저장 (SecureStore 또는 localStorage)
  */
 export const saveTokens = async (tokens: TokenResponse): Promise<void> => {
   if (Platform.OS === 'web') {
+    if (isWebOAuthOnlyMode) {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      return;
+    }
+
     localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
     localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
   } else {
@@ -91,6 +106,10 @@ export const saveTokens = async (tokens: TokenResponse): Promise<void> => {
  * Access Token 조회
  */
 export const getAccessToken = async (): Promise<string | null> => {
+  if (isWebOAuthOnlyMode) {
+    return null;
+  }
+
   if (Platform.OS === 'web') {
     return localStorage.getItem(ACCESS_TOKEN_KEY);
   }
@@ -101,6 +120,10 @@ export const getAccessToken = async (): Promise<string | null> => {
  * Refresh Token 조회
  */
 export const getRefreshToken = async (): Promise<string | null> => {
+  if (isWebOAuthOnlyMode) {
+    return null;
+  }
+
   if (Platform.OS === 'web') {
     return localStorage.getItem(REFRESH_TOKEN_KEY);
   }
@@ -128,6 +151,8 @@ export const clearTokens = async (): Promise<void> => {
  * 이메일 회원가입
  */
 export const register = async (data: RegisterRequest): Promise<LoginResponse> => {
+  assertInteractiveWebAuthEnabled();
+
   const response = await api.post(`${AUTH_BASE}/register`, data);
   const result = response.data.data as LoginResponse;
 
@@ -141,6 +166,8 @@ export const register = async (data: RegisterRequest): Promise<LoginResponse> =>
  * 이메일 로그인
  */
 export const login = async (data: LoginRequest): Promise<LoginResponse> => {
+  assertInteractiveWebAuthEnabled();
+
   const response = await api.post(`${AUTH_BASE}/login`, data);
   const result = response.data.data as LoginResponse;
 
@@ -154,6 +181,11 @@ export const login = async (data: LoginRequest): Promise<LoginResponse> => {
  * 토큰 갱신
  */
 export const refreshTokens = async (): Promise<TokenResponse | null> => {
+  if (isWebOAuthOnlyMode) {
+    await clearTokens();
+    return null;
+  }
+
   const refreshToken = await getRefreshToken();
 
   if (!refreshToken) {
@@ -196,6 +228,10 @@ export const logout = async (): Promise<void> => {
  * 현재 사용자 정보 조회
  */
 export const getCurrentUser = async (): Promise<AuthUser | null> => {
+  if (isWebOAuthOnlyMode) {
+    return null;
+  }
+
   try {
     const response = await api.get(`${AUTH_BASE}/me`);
     return response.data.data as AuthUser;
@@ -215,6 +251,8 @@ export const changePassword = async (
   currentPassword: string,
   newPassword: string
 ): Promise<void> => {
+  assertInteractiveWebAuthEnabled();
+
   await api.post(`${AUTH_BASE}/change-password`, {
     current_password: currentPassword,
     new_password: newPassword,
@@ -225,6 +263,8 @@ export const changePassword = async (
  * 인증 메일 재전송
  */
 export const resendVerificationEmail = async (): Promise<void> => {
+  assertInteractiveWebAuthEnabled();
+
   await api.post(`${AUTH_BASE}/email/verification/resend`);
 };
 
@@ -232,6 +272,8 @@ export const resendVerificationEmail = async (): Promise<void> => {
  * 비밀번호 재설정 메일 요청
  */
 export const requestPasswordReset = async (email: string): Promise<void> => {
+  assertInteractiveWebAuthEnabled();
+
   await api.post(`${AUTH_BASE}/password-reset/request`, { email });
 };
 
@@ -252,6 +294,10 @@ export type OAuthClient = 'web' | 'mobile';
 export const getGoogleAuthUrl = async (
   client: OAuthClient = 'web'
 ): Promise<OAuthUrlResponse> => {
+  if (client === 'web') {
+    assertInteractiveWebAuthEnabled();
+  }
+
   const response = await api.get(`${AUTH_BASE}/google`, {
     params: { client },
   });
@@ -265,6 +311,8 @@ export const handleGoogleCallback = async (
   code: string,
   state?: string
 ): Promise<LoginResponse> => {
+  assertInteractiveWebAuthEnabled();
+
   const response = await api.post(`${AUTH_BASE}/google/callback`, { code, state });
   const result = response.data.data as LoginResponse;
 
@@ -279,6 +327,10 @@ export const handleGoogleCallback = async (
 export const getKakaoAuthUrl = async (
   client: OAuthClient = 'web'
 ): Promise<OAuthUrlResponse> => {
+  if (client === 'web') {
+    assertInteractiveWebAuthEnabled();
+  }
+
   const response = await api.get(`${AUTH_BASE}/kakao`, {
     params: { client },
   });
@@ -292,6 +344,8 @@ export const handleKakaoCallback = async (
   code: string,
   state?: string
 ): Promise<LoginResponse> => {
+  assertInteractiveWebAuthEnabled();
+
   const response = await api.post(`${AUTH_BASE}/kakao/callback`, { code, state });
   const result = response.data.data as LoginResponse;
 

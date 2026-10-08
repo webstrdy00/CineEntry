@@ -1,838 +1,435 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, ActivityIndicator, RefreshControl } from "react-native"
+import { useState, useCallback, useMemo, useRef } from "react"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, RefreshControl, useWindowDimensions } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs"
 import { useNavigation, useFocusEffect } from "@react-navigation/native"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
-import { LinearGradient } from "expo-linear-gradient"
-import { useState, useCallback } from "react"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { COLORS } from "../constants/colors"
 import { useAlert } from "../components/CustomAlert"
-import MovieCard from "../components/MovieCard"
-import StatCard from "../components/StatCard"
-import type { RootStackParamList } from "../types"
-import { getOverallStats, getStreakData } from "../services/statsService"
+import type { MovieDetail, MovieStatus, RootStackParamList } from "../types"
+import { getOverallStats, type OverallStats } from "../services/statsService"
 import { getMovies } from "../services/movieService"
 import { updateUserProfile } from "../services/userService"
-import { getCollections } from "../services/collectionService"
+import { getCollections, type Collection } from "../services/collectionService"
 import { YEARLY_GOAL_MAX, YEARLY_GOAL_MIN } from "../constants/profile"
 
-const { width } = Dimensions.get("window")
-
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>
+type ArchiveMovie = MovieDetail & { review?: string | null }
+
+const getRecordTime = (movie: ArchiveMovie) => {
+  for (const value of [movie.watch_date, movie.updated_at, movie.created_at]) {
+    if (!value) continue
+    const time = new Date(value).getTime()
+    if (Number.isFinite(time)) return time
+  }
+  return 0
+}
+
+const formatWatchDate = (value?: Date | string) => {
+  if (!value) return null
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value.replace(/-/g, ".")
+  }
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString("ko-KR") : null
+}
+
+const getWatchingProgressText = (movie: ArchiveMovie) => {
+  if (movie.content_type === "series") {
+    const season = movie.current_season ?? 1
+    const episode = movie.current_episode ?? 0
+    return movie.total_episodes
+      ? `시즌 ${season} · ${episode}/${movie.total_episodes}화`
+      : `시즌 ${season} · ${episode}화까지`
+  }
+  return movie.runtime
+    ? `${movie.progress ?? 0}분 / ${movie.runtime}분`
+    : `${movie.progress ?? 0}분 감상`
+}
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>()
   const insets = useSafeAreaInsets()
   const tabBarHeight = useBottomTabBarHeight()
+  const { width } = useWindowDimensions()
   const { showAlert } = useAlert()
   const currentYear = new Date().getFullYear()
+  const requestId = useRef(0)
+  const pageWidth = Math.min(width - insets.left - insets.right, 1120)
+  const horizontalPadding = width >= 768 ? 32 : 20
+  const contentWidth = Math.max(0, pageWidth - horizontalPadding * 2)
+  const recordColumns = contentWidth >= 720 ? 2 : 1
+  const recordWidth = (contentWidth - (recordColumns - 1) * 28) / recordColumns
+  const posterWidth = Math.min(156, Math.max(104, (contentWidth - 28) / 2.6))
 
-  const defaultStats = {
-    yearly_goal: 100,
-    yearly_progress: 0,
-    total_watched: 0,
-    completed_movie_count: 0,
-    completed_series_count: 0,
-    current_streak: 0,
-    average_rating: 0,
-  }
-
-  // State
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState(false)
-  const [stats, setStats] = useState<any>(defaultStats)
-  const [watchingMovies, setWatchingMovies] = useState<any[]>([])
-  const [watchlistMovies, setWatchlistMovies] = useState<any[]>([])
-  const [collections, setCollections] = useState<any[]>([])
-  const [streakData, setStreakData] = useState<any>(null)
+  const [movies, setMovies] = useState<ArchiveMovie[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
+  const [stats, setStats] = useState<OverallStats | null>(null)
+  const [loadErrors, setLoadErrors] = useState({ movies: false, collections: false, goal: false })
+  const [toolsExpanded, setToolsExpanded] = useState(false)
   const [isEditingGoal, setIsEditingGoal] = useState(false)
   const [isSavingGoal, setIsSavingGoal] = useState(false)
 
+  const loadData = useCallback(async () => {
+    const id = ++requestId.current
+    setLoading(true)
+    const [movieResult, collectionResult, statsResult] = await Promise.allSettled([
+      getMovies(),
+      getCollections(),
+      getOverallStats(currentYear),
+    ])
+    if (id !== requestId.current) return
+
+    if (movieResult.status === "fulfilled") setMovies(movieResult.value)
+    if (collectionResult.status === "fulfilled") setCollections(collectionResult.value)
+    if (statsResult.status === "fulfilled") setStats(statsResult.value)
+    setLoadErrors({
+      movies: movieResult.status === "rejected",
+      collections: collectionResult.status === "rejected",
+      goal: statsResult.status === "rejected",
+    })
+    setLoading(false)
+  }, [currentYear])
+
+  useFocusEffect(useCallback(() => {
+    void loadData()
+    return () => { requestId.current += 1 }
+  }, [loadData]))
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await loadData()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadData])
+
+  const completedMovies = useMemo(
+    () => movies.filter((movie) => movie.status === "completed").sort((a, b) => getRecordTime(b) - getRecordTime(a)).slice(0, 6),
+    [movies]
+  )
+  const watchingMovies = useMemo(() => movies.filter((movie) => movie.status === "watching"), [movies])
+  const watchlistMovies = useMemo(() => movies.filter((movie) => movie.status === "watchlist"), [movies])
+
+  const openArchive = (status: "all" | MovieStatus) => {
+    navigation.navigate("Main", { screen: "Movies", params: { initialFilter: status } })
+  }
+
   const handleGoalStep = async (delta: number) => {
-    const currentGoal = stats.yearly_goal || 100
+    if (!stats || isSavingGoal || loadErrors.goal) return
+    const currentGoal = stats.yearly_goal
     const nextGoal = Math.max(YEARLY_GOAL_MIN, Math.min(YEARLY_GOAL_MAX, currentGoal + delta))
     if (nextGoal === currentGoal) return
-    setStats((prev: any) => ({ ...prev, yearly_goal: nextGoal }))
+    setIsSavingGoal(true)
+    setStats((previous) => previous ? { ...previous, yearly_goal: nextGoal } : previous)
     try {
-      setIsSavingGoal(true)
       await updateUserProfile({ yearly_goal: nextGoal })
     } catch (error) {
       console.error("연간 목표 저장 실패:", error)
-      setStats((prev: any) => ({ ...prev, yearly_goal: currentGoal }))
+      setStats((previous) => previous ? { ...previous, yearly_goal: currentGoal } : previous)
       showAlert("오류", "목표 저장에 실패했습니다.")
     } finally {
       setIsSavingGoal(false)
     }
   }
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(false)
-
-      if (__DEV__) {
-        console.log('📡 HomeScreen: API 호출 시작')
-      }
-
-      // API 호출
-      const [statsData, watchingData, watchlistData, collectionsData, streakDataResult] = await Promise.all([
-        getOverallStats(currentYear).catch((err) => {
-          if (__DEV__) {
-            console.error('❌ getOverallStats 실패:', err.message)
-          }
-          return null
-        }),
-        getMovies('watching').catch((err) => {
-          if (__DEV__) {
-            console.error('❌ getMovies(watching) 실패:', err.message)
-          }
-          return []
-        }),
-        getMovies('watchlist').catch((err) => {
-          if (__DEV__) {
-            console.error('❌ getMovies(watchlist) 실패:', err.message)
-          }
-          return []
-        }),
-        getCollections().catch((err) => {
-          if (__DEV__) {
-            console.error('❌ getCollections 실패:', err.message)
-          }
-          return []
-        }),
-        getStreakData().catch((err) => {
-          if (__DEV__) {
-            console.error('❌ getStreakData 실패:', err.message)
-          }
-          return null
-        }),
-      ])
-
-      if (__DEV__) {
-        console.log('✅ HomeScreen: API 호출 완료')
-      }
-
-      setStats(statsData || defaultStats)
-      setWatchingMovies(watchingData)
-      setWatchlistMovies(watchlistData)
-      setCollections(collectionsData)
-      setStreakData(streakDataResult)
-    } catch (error: any) {
-      if (__DEV__) {
-        console.error('❌ HomeScreen 데이터 로드 실패:', error.message, error)
-      }
-      setError(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [currentYear])
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true)
-    await loadData()
-    setRefreshing(false)
-  }, [loadData])
-
-  // 홈 화면 포커스 시마다 최신 데이터 재조회
-  useFocusEffect(
-    useCallback(() => {
-      loadData()
-    }, [loadData])
+  const renderPoster = (movie: ArchiveMovie, size: number) => (
+    movie.poster_url || movie.poster ? (
+      <Image source={{ uri: movie.poster_url || movie.poster }} style={[styles.poster, { width: size, height: size * 1.5 }]} resizeMode="cover" />
+    ) : (
+      <View style={[styles.poster, styles.posterPlaceholder, { width: size, height: size * 1.5 }]}>
+        <Ionicons name="film-outline" size={28} color={COLORS.lightGray} />
+      </View>
+    )
   )
 
-  // 로딩 중
-  if (loading) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={COLORS.gold} />
-        <Text style={{ color: COLORS.lightGray, marginTop: 12 }}>데이터를 불러오는 중...</Text>
-      </View>
-    )
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.lightGray} />
-        <Text style={{ color: COLORS.lightGray, marginTop: 16, fontSize: 16 }}>데이터를 불러올 수 없습니다</Text>
+  const renderShelf = (items: ArchiveMovie[], watching = false) => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
+      {items.slice(0, 12).map((movie) => (
         <TouchableOpacity
-          onPress={loadData}
-          style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.deepGray, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, gap: 6 }}
+          key={movie.id}
+          style={{ width: posterWidth }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={`${movie.title} 상세 보기`}
+          onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
         >
-          <Ionicons name="refresh" size={18} color={COLORS.gold} />
-          <Text style={{ color: COLORS.gold, fontWeight: '600' }}>다시 시도</Text>
+          {renderPoster(movie, posterWidth)}
+          <Text style={styles.shelfTitle} numberOfLines={2}>{movie.title}</Text>
+          <Text style={styles.caption} numberOfLines={2}>
+            {watching ? getWatchingProgressText(movie) : [movie.content_type === "series" ? "시리즈" : "영화", movie.year].filter(Boolean).join(" · ")}
+          </Text>
         </TouchableOpacity>
+      ))}
+    </ScrollView>
+  )
+
+  if (loading && movies.length === 0 && collections.length === 0 && !refreshing) {
+    return (
+      <View style={[styles.container, styles.loadingState]}>
+        <ActivityIndicator size="large" color={COLORS.gold} />
+        <Text style={styles.stateDescription}>영화 기록을 불러오는 중...</Text>
       </View>
     )
   }
-
-  // 이번 주 날짜 (월~일) 배열 반환
-  const getThisWeekDates = (): Date[] => {
-    const today = new Date()
-    const dayOfWeek = today.getDay() // 0=Sun, 1=Mon, ...
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7))
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday)
-      d.setDate(monday.getDate() + i)
-      return d
-    })
-  }
-
-  const isDateInWatchDates = (date: Date, watchDates: string[]): boolean => {
-    const dateStr = date.toISOString().split('T')[0]
-    return watchDates.includes(dateStr)
-  }
-
-  const getWatchingProgressText = (item: any) => {
-    if ((item.content_type ?? "movie") === "series") {
-      const season = item.current_season || 1
-      const episode = item.current_episode || 0
-      const total = item.total_episodes || 0
-      if (total > 0) return `시즌 ${season} · ${episode}/${total}화`
-      return `시즌 ${season} · ${episode}화까지`
-    }
-    return `${item.progress || 0}분 / ${item.runtime || 0}분`
-  }
-
-  const getWatchingProgressPercent = (item: any) => {
-    if ((item.content_type ?? "movie") === "series") {
-      const total = item.total_episodes || 0
-      if (total <= 0) return 0
-      return Math.min(100, ((item.current_episode || 0) / total) * 100)
-    }
-    return Math.min(100, ((item.progress || 0) / (item.runtime || 1)) * 100)
-  }
-
-  const thisWeekDates = getThisWeekDates()
-  const weekDayLabels = ['월', '화', '수', '목', '금', '토', '일']
-  const streakWatchDates: string[] = streakData?.streak_dates || []
-
-  // 연간 목표 데이터
-  const yearlyGoal = {
-    target: stats.yearly_goal || 100,
-    current: stats.yearly_progress || 0,
-  }
-
-  const yearlyProgress = yearlyGoal.target > 0
-    ? Math.min(100, (yearlyGoal.current / yearlyGoal.target) * 100)
-    : 0
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
-        style={styles.container}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />
-        }
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 32 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.gold} colors={[COLORS.gold]} />}
       >
-        {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <View>
-            <Text style={styles.greeting}>어서오세요 :)</Text>
-            <Text style={styles.subtitle}>오늘은 어떤 작품을 감상하셨나요?</Text>
-          </View>
-        </View>
-
-      {/* Currently Watching Section */}
-      {watchingMovies.length > 0 ? (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>현재 보고 있는 작품</Text>
-            <Text style={styles.watchingCount}>{watchingMovies.length}작품</Text>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currentMovieList}>
-            {watchingMovies.map((watchingMovie) => (
-              <TouchableOpacity
-                key={watchingMovie.id}
-                style={styles.currentMovieCard}
-                onPress={() => navigation.navigate("MovieDetail", { id: watchingMovie.id })}
-              >
-                <LinearGradient colors={[COLORS.deepGray, COLORS.darkNavy]} style={styles.currentMovieGradient}>
-                  <View style={styles.currentMovieContent}>
-                    <Image source={{ uri: watchingMovie.poster_url || watchingMovie.poster }} style={styles.currentMoviePoster} />
-                    <View style={styles.currentMovieInfo}>
-                      <Text style={styles.currentMovieLabel}>보는 중</Text>
-                      <Text style={styles.currentMovieTitle} numberOfLines={2}>
-                        {watchingMovie.title}
-                      </Text>
-                      <View style={styles.progressContainer}>
-                        <Text style={styles.progressText}>
-                          {getWatchingProgressText(watchingMovie)}
-                        </Text>
-                        <View style={styles.progressBar}>
-                          <View
-                            style={[
-                              styles.progressFill,
-                              { width: `${getWatchingProgressPercent(watchingMovie)}%` },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </LinearGradient>
+        <View style={[styles.page, { width: pageWidth, paddingHorizontal: horizontalPadding, paddingTop: 28 }]}>
+          <View style={styles.intro}>
+            <Text style={styles.eyebrow}>나의 영화 아카이브</Text>
+            <Text style={[styles.headerTitle, { fontSize: width >= 768 ? 42 : 32 }]}>내가 본 영화,{"\n"}내가 남긴 이야기</Text>
+            <Text style={styles.subtitle}>좋았던 장면과 오래 남은 감상을 모아두세요.</Text>
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.primaryAction} onPress={() => navigation.navigate("MovieSearch")} accessibilityRole="button">
+                <Ionicons name="search-outline" size={18} color={COLORS.darkNavy} />
+                <Text style={styles.primaryActionText}>작품 찾아 기록하기</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      ) : (
-        <View style={styles.emptyCard}>
-          <Ionicons name="film-outline" size={40} color={COLORS.lightGray} />
-          <Text style={styles.emptyText}>현재 보고 있는 작품이 없습니다</Text>
-          <TouchableOpacity onPress={() => navigation.navigate("MovieSearch")}>
-            <Text style={styles.emptyLink}>작품 추가하기</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Yearly Goal Card */}
-      <View style={styles.goalCard}>
-        <TouchableOpacity style={styles.goalHeader} activeOpacity={0.7} onPress={() => setIsEditingGoal(!isEditingGoal)}>
-          <Ionicons name="trophy-outline" size={24} color={COLORS.gold} />
-          <Text style={styles.goalTitle}>{currentYear}년 연간 목표</Text>
-          <Ionicons name={isEditingGoal ? "chevron-up" : "create-outline"} size={16} color={COLORS.lightGray} style={{ marginLeft: "auto" }} />
-        </TouchableOpacity>
-        <View style={styles.goalContent}>
-          <Text style={styles.goalNumbers}>
-            <Text style={styles.goalCurrent}>{yearlyGoal.current}</Text>
-            <Text style={styles.goalSeparator}> / </Text>
-            <Text style={styles.goalTarget}>{yearlyGoal.target}작품</Text>
-          </Text>
-          <View style={styles.goalProgressBar}>
-            <View style={[styles.goalProgressFill, { width: `${yearlyProgress}%` }]} />
-          </View>
-          <Text style={styles.goalPercentage}>{yearlyProgress.toFixed(0)}% 달성</Text>
-        </View>
-        {isEditingGoal && (
-          <View style={styles.goalStepperRow}>
-            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-10)} disabled={isSavingGoal}>
-              <Text style={styles.goalStepperButtonText}>-10</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(-1)} disabled={isSavingGoal}>
-              <Text style={styles.goalStepperButtonText}>-1</Text>
-            </TouchableOpacity>
-            <View style={styles.goalStepperValue}>
-              <Text style={styles.goalStepperValueText}>{yearlyGoal.target}</Text>
-            </View>
-            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(1)} disabled={isSavingGoal}>
-              <Text style={styles.goalStepperButtonText}>+1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.goalStepperButton} onPress={() => void handleGoalStep(10)} disabled={isSavingGoal}>
-              <Text style={styles.goalStepperButtonText}>+10</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Stats Section */}
-      <View style={styles.statsSection}>
-        <StatCard
-          title="연속 기록"
-          value={`${stats.current_streak || 0}일째`}
-          icon="calendar-outline"
-          color={COLORS.gold}
-        />
-        <StatCard
-          title="총 감상"
-          value={`${stats.total_watched || 0}작품`}
-          icon="film-outline"
-          color={COLORS.gold}
-        />
-        <StatCard
-          title="평균 별점"
-          value={(stats.average_rating || 0).toFixed(1)}
-          icon="star-outline"
-          color={COLORS.gold}
-        />
-      </View>
-
-        {/* Streak Card */}
-        <TouchableOpacity
-          style={styles.streakCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("StreakDetail")}
-        >
-          <View style={styles.streakCardHeader}>
-            <Ionicons name="flame" size={22} color="#FF6B35" />
-            <Text style={styles.streakCardTitle}>연속 기록</Text>
-            <Text style={styles.streakCardValue}>
-              {streakData
-                ? (streakData.streak_type === 'weekly' || streakData.streak_type === 'custom')
-                  ? `${streakData.current_streak}주`
-                  : `${streakData.current_streak}일째`
-                : '0일째'}
-            </Text>
-          </View>
-          <View style={styles.streakWeekRow}>
-            {thisWeekDates.map((date, idx) => {
-              const checked = isDateInWatchDates(date, streakWatchDates)
-              const isSunday = idx === 6
-              return (
-                <View key={idx} style={styles.streakDayItem}>
-                  <Ionicons
-                    name={checked ? "checkmark-circle" : "ellipse-outline"}
-                    size={28}
-                    color={checked ? "#4ECDC4" : COLORS.lightGray}
-                  />
-                  <Text style={[styles.streakDayLabel, isSunday && styles.streakSundayLabel]}>
-                    {weekDayLabels[idx]}
-                  </Text>
-                </View>
-              )
-            })}
-          </View>
-        </TouchableOpacity>
-
-        {/* Watch Calendar Card */}
-        <TouchableOpacity
-          style={styles.calendarCard}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("WatchCalendar")}
-        >
-          <View style={styles.calendarCardContent}>
-            <View>
-              <Text style={styles.calendarCardTitle}>시청 달력</Text>
-              <Text style={styles.calendarCardSubtitle}>이번 달은 얼마나 보셨나요?</Text>
-            </View>
-            <Ionicons name="calendar-outline" size={36} color={COLORS.gold} />
-          </View>
-        </TouchableOpacity>
-
-        {/* Watchlist Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Ionicons name="bookmark" size={20} color={COLORS.gold} style={{ marginRight: 6 }} />
-              <Text style={styles.sectionTitle}>보고 싶은 작품</Text>
-            </View>
-            {watchlistMovies.length > 0 && (
-              <TouchableOpacity
-                onPress={() =>
-                  navigation.navigate("Main", {
-                    screen: "Movies",
-                    params: { initialFilter: "watchlist" },
-                  })
-                }
-              >
-                <Text style={styles.seeAllText}>더 보기</Text>
+              <TouchableOpacity style={styles.textAction} onPress={() => openArchive("all")} accessibilityRole="button">
+                <Text style={styles.linkText}>전체 기록</Text>
+                <Ionicons name="arrow-forward" size={16} color={COLORS.gold} />
               </TouchableOpacity>
-            )}
+            </View>
           </View>
 
-          {watchlistMovies.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.movieList}>
-              {watchlistMovies.map((movie) => (
-                <MovieCard
-                  key={movie.id}
-                  movie={{ ...movie, status: "watchlist" as const }}
-                  onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
-                />
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.watchlistEmptyCard}>
-              <Ionicons name="bookmark-outline" size={36} color={COLORS.lightGray} />
-              <Text style={styles.emptyText}>보고 싶은 작품이 없습니다</Text>
-              <TouchableOpacity onPress={() => navigation.navigate("MovieSearch")}>
-                <Text style={styles.emptyLink}>작품 추가하기</Text>
-              </TouchableOpacity>
+          {loadErrors.movies && (
+            <View style={styles.errorNotice}>
+              <Ionicons name="cloud-offline-outline" size={20} color={COLORS.lightGray} />
+              <Text style={styles.noticeText}>영화 기록을 불러오지 못했습니다.{movies.length > 0 ? " 이전 기록을 표시합니다." : ""}</Text>
+              <TouchableOpacity onPress={() => void loadData()} accessibilityRole="button"><Text style={styles.linkText}>재시도</Text></TouchableOpacity>
             </View>
           )}
-        </View>
 
-        {/* Collections Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <Ionicons name="sparkles" size={20} color={COLORS.gold} style={{ marginRight: 6 }} />
-              <Text style={styles.sectionTitle}>컬렉션</Text>
-            </View>
-            {collections.length > 0 && (
-              <TouchableOpacity onPress={() => navigation.navigate("Collections")}>
-                <Text style={styles.seeAllText}>더 보기</Text>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionTitle}>최근 남긴 기록</Text>
+                <Text style={styles.caption}>감상한 작품과 그날의 한 줄</Text>
+              </View>
+              <TouchableOpacity style={styles.sectionLink} onPress={() => openArchive("completed")} accessibilityRole="button">
+                <Text style={styles.linkText}>모두 보기</Text>
               </TouchableOpacity>
+            </View>
+            {completedMovies.length > 0 ? (
+              <View style={styles.records}>
+                {completedMovies.map((movie) => {
+                  const review = (movie.review || movie.one_line_review || "").trim()
+                  const watchDate = formatWatchDate(movie.watch_date)
+                  return (
+                    <TouchableOpacity
+                      key={movie.id}
+                      style={[styles.record, { width: recordWidth }]}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${movie.title} 감상 기록 보기`}
+                      onPress={() => navigation.navigate("MovieDetail", { id: movie.id })}
+                    >
+                      {renderPoster(movie, recordColumns === 2 ? 88 : 76)}
+                      <View style={styles.recordInfo}>
+                        <Text style={styles.recordTitle} numberOfLines={2}>{movie.title}</Text>
+                        <View style={styles.recordMeta}>
+                          {watchDate && <Text style={styles.caption}>{watchDate}</Text>}
+                          {movie.rating != null && (
+                            <View style={styles.rating}>
+                              <Ionicons name="star" size={12} color={COLORS.gold} />
+                              <Text style={styles.ratingText}>{Number(movie.rating).toFixed(1)}</Text>
+                            </View>
+                          )}
+                        </View>
+                        {review ? (
+                          <Text style={styles.review} numberOfLines={3}>{review}</Text>
+                        ) : (
+                          <Text style={styles.reviewPrompt}>아직 남기지 않은 감상, 한 줄로 기록해보세요.</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            ) : !loadErrors.movies && (
+              <View style={styles.emptyState}>
+                <Ionicons name="create-outline" size={28} color={COLORS.gold} />
+                <Text style={styles.emptyTitle}>첫 감상 기록을 남겨보세요</Text>
+                <Text style={styles.stateDescription}>감상 완료한 작품의 별점과 한 줄 감상이 여기에 쌓입니다.</Text>
+                <TouchableOpacity style={styles.textAction} onPress={() => navigation.navigate("MovieSearch")} accessibilityRole="button">
+                  <Text style={styles.linkText}>작품 찾아보기</Text><Ionicons name="arrow-forward" size={16} color={COLORS.gold} />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-          {collections.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.collectionScrollList}>
-              {collections.map((collection) => (
-                <TouchableOpacity
-                  key={collection.id}
-                  style={styles.collectionCard}
-                  activeOpacity={0.8}
-                  onPress={() => navigation.navigate("CollectionDetail", { id: collection.id })}
-                >
-                  <View style={styles.collectionPosterRow}>
-                    {(collection.preview_posters?.length > 0) ? (
-                      collection.preview_posters.slice(0, 3).map((url: string, idx: number) => (
-                        <Image key={idx} source={{ uri: url }} style={styles.collectionPoster} />
-                      ))
-                    ) : (
-                      <View style={styles.collectionEmptyPoster}>
-                        <Ionicons name="sparkles" size={28} color={COLORS.lightGray} />
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>이어 보는 작품</Text><Text style={styles.caption}>아직 끝나지 않은 이야기</Text></View>
+              <TouchableOpacity style={styles.sectionLink} onPress={() => openArchive("watching")} accessibilityRole="button"><Text style={styles.linkText}>모두 보기</Text></TouchableOpacity>
+            </View>
+            {watchingMovies.length > 0 ? renderShelf(watchingMovies, true) : !loadErrors.movies && (
+              <Text style={styles.emptyLine}>현재 보고 있는 작품이 없습니다.</Text>
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>보고 싶은 작품</Text><Text style={styles.caption}>다음 감상을 위한 작은 목록</Text></View>
+              <TouchableOpacity style={styles.sectionLink} onPress={() => openArchive("watchlist")} accessibilityRole="button"><Text style={styles.linkText}>모두 보기</Text></TouchableOpacity>
+            </View>
+            {watchlistMovies.length > 0 ? renderShelf(watchlistMovies) : !loadErrors.movies && (
+              <View style={styles.emptyRow}>
+                <Text style={styles.emptyLine}>마음에 둔 작품을 모아보세요.</Text>
+                <TouchableOpacity style={styles.sectionLink} onPress={() => navigation.navigate("MovieSearch")} accessibilityRole="button"><Text style={styles.linkText}>작품 찾기</Text></TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>나의 컬렉션</Text><Text style={styles.caption}>취향과 주제로 묶어 둔 작품들</Text></View>
+              <TouchableOpacity style={styles.sectionLink} onPress={() => navigation.navigate("Collections")} accessibilityRole="button"><Text style={styles.linkText}>모두 보기</Text></TouchableOpacity>
+            </View>
+            {loadErrors.collections && (
+              <View style={styles.errorNotice}>
+                <Text style={styles.noticeText}>컬렉션을 불러오지 못했습니다.</Text>
+                <TouchableOpacity onPress={() => void loadData()} accessibilityRole="button"><Text style={styles.linkText}>재시도</Text></TouchableOpacity>
+              </View>
+            )}
+            {collections.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
+                {collections.slice(0, 8).map((collection) => (
+                  <TouchableOpacity
+                    key={collection.id}
+                    style={[styles.collection, { width: Math.min(240, contentWidth * 0.8) }]}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate("CollectionDetail", { id: collection.id })}
+                  >
+                    <View style={styles.collectionPosters}>
+                      {collection.preview_posters.length > 0 ? collection.preview_posters.slice(0, 3).map((url, index) => (
+                        <Image key={`${url}-${index}`} source={{ uri: url }} style={styles.collectionPoster} resizeMode="cover" />
+                      )) : <View style={styles.collectionPlaceholder}><Ionicons name="albums-outline" size={28} color={COLORS.lightGray} /></View>}
+                    </View>
+                    <Text style={styles.shelfTitle} numberOfLines={1}>{collection.name}</Text>
+                    <Text style={styles.caption}>{collection.movie_count}작품</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : !loadErrors.collections && (
+              <View style={styles.emptyRow}>
+                <Text style={styles.emptyLine}>작품을 나만의 주제로 묶어보세요.</Text>
+                <TouchableOpacity style={styles.sectionLink} onPress={() => navigation.navigate("Collections")} accessibilityRole="button"><Text style={styles.linkText}>컬렉션 만들기</Text></TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.tools}>
+            <TouchableOpacity style={styles.toolsToggle} onPress={() => setToolsExpanded((expanded) => !expanded)} accessibilityRole="button" accessibilityState={{ expanded: toolsExpanded }}>
+              <Text style={styles.toolsTitle}>달력 · 회고 · 감상 목표</Text>
+              <Ionicons name={toolsExpanded ? "chevron-up" : "chevron-down"} size={18} color={COLORS.lightGray} />
+            </TouchableOpacity>
+            {toolsExpanded && (
+              <View style={styles.toolsContent}>
+                <View style={styles.toolLinks}>
+                  <TouchableOpacity style={styles.toolLink} onPress={() => navigation.navigate("WatchCalendar")} accessibilityRole="button"><Ionicons name="calendar-outline" size={18} color={COLORS.gold} /><Text style={styles.linkText}>시청 달력</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.toolLink} onPress={() => navigation.navigate("Main", { screen: "Stats" })} accessibilityRole="button"><Ionicons name="book-outline" size={18} color={COLORS.gold} /><Text style={styles.linkText}>감상 회고</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.toolLink} onPress={() => navigation.navigate("StreakDetail")} accessibilityRole="button"><Ionicons name="time-outline" size={18} color={COLORS.gold} /><Text style={styles.linkText}>기록 리듬</Text></TouchableOpacity>
+                </View>
+                {loadErrors.goal ? (
+                  <View style={styles.emptyRow}><Text style={styles.emptyLine}>감상 목표를 불러오지 못했습니다.</Text><TouchableOpacity style={styles.sectionLink} onPress={() => void loadData()} accessibilityRole="button"><Text style={styles.linkText}>재시도</Text></TouchableOpacity></View>
+                ) : stats && (
+                  <View style={styles.goal}>
+                    <View style={styles.goalHeader}>
+                      <View style={styles.sectionHeading}><Text style={styles.toolsTitle}>{currentYear}년 감상 목표</Text><Text style={styles.caption}>{stats.yearly_progress} / {stats.yearly_goal}작품</Text></View>
+                      <TouchableOpacity style={styles.sectionLink} onPress={() => setIsEditingGoal((editing) => !editing)} accessibilityRole="button" accessibilityState={{ expanded: isEditingGoal }}><Text style={styles.linkText}>{isEditingGoal ? "닫기" : "목표 수정"}</Text></TouchableOpacity>
+                    </View>
+                    <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${stats.yearly_goal > 0 ? Math.min(100, (stats.yearly_progress / stats.yearly_goal) * 100) : 0}%` }]} /></View>
+                    {isEditingGoal && (
+                      <View style={styles.goalStepper}>
+                        {[-10, -1, 1, 10].map((delta) => (
+                          <TouchableOpacity
+                            key={delta}
+                            style={[styles.stepButton, (isSavingGoal || (delta < 0 ? stats.yearly_goal <= YEARLY_GOAL_MIN : stats.yearly_goal >= YEARLY_GOAL_MAX)) && styles.disabled]}
+                            disabled={isSavingGoal || (delta < 0 ? stats.yearly_goal <= YEARLY_GOAL_MIN : stats.yearly_goal >= YEARLY_GOAL_MAX)}
+                            onPress={() => void handleGoalStep(delta)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`감상 목표 ${Math.abs(delta)}작품 ${delta < 0 ? "줄이기" : "늘리기"}`}
+                          ><Text style={styles.linkText}>{delta > 0 ? "+" : ""}{delta}</Text></TouchableOpacity>
+                        ))}
+                        {isSavingGoal && <ActivityIndicator size="small" color={COLORS.gold} />}
                       </View>
                     )}
                   </View>
-                  <Text style={styles.collectionCardName} numberOfLines={1}>{collection.name}</Text>
-                  <Text style={styles.collectionCardCount}>{collection.movie_count}작품</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.watchlistEmptyCard}>
-              <Ionicons name="sparkles" size={36} color={COLORS.lightGray} />
-              <Text style={styles.emptyText}>작품을 기록하면 자동으로 컬렉션이 생성됩니다</Text>
-            </View>
-          )}
+                )}
+              </View>
+            )}
+          </View>
         </View>
-
-        <View style={[styles.bottomPadding, { height: tabBarHeight + 60 }]} />
       </ScrollView>
-
-      {/* Floating Action Button */}
-      <TouchableOpacity
-        style={[styles.floatingButton, { bottom: tabBarHeight + 20 }]}
-        onPress={() => navigation.navigate("MovieSearch")}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
-
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.darkNavy,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  greeting: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: COLORS.white,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-  },
-  currentMovieCard: {
-    width: width - 72,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  currentMovieList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  emptyCard: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
-    padding: 40,
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 14,
-    color: COLORS.lightGray,
-    marginTop: 12,
-  },
-  emptyLink: {
-    fontSize: 14,
-    color: COLORS.gold,
-    marginTop: 8,
-    fontWeight: "600",
-  },
-  currentMovieGradient: {
-    padding: 20,
-  },
-  currentMovieContent: {
-    flexDirection: "row",
-  },
-  currentMoviePoster: {
-    width: 80,
-    height: 120,
-    borderRadius: 8,
-  },
-  currentMovieInfo: {
-    flex: 1,
-    marginLeft: 16,
-    justifyContent: "center",
-  },
-  currentMovieLabel: {
-    fontSize: 12,
-    color: COLORS.gold,
-    marginBottom: 4,
-    fontWeight: "600",
-  },
-  currentMovieTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: COLORS.white,
-    marginBottom: 12,
-  },
-  watchingCount: {
-    fontSize: 14,
-    color: COLORS.gold,
-    fontWeight: "700",
-  },
-  progressContainer: {
-    marginTop: 8,
-  },
-  progressText: {
-    fontSize: 12,
-    color: COLORS.lightGray,
-    marginBottom: 6,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: COLORS.darkNavy,
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: COLORS.gold,
-  },
-  goalCard: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
-    padding: 20,
-  },
-  goalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    gap: 8,
-  },
-  goalTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.white,
-  },
-  goalContent: {
-    alignItems: "center",
-  },
-  goalNumbers: {
-    marginBottom: 12,
-  },
-  goalCurrent: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: COLORS.gold,
-  },
-  goalSeparator: {
-    fontSize: 20,
-    color: COLORS.lightGray,
-  },
-  goalTarget: {
-    fontSize: 20,
-    color: COLORS.lightGray,
-  },
-  goalProgressBar: {
-    width: "100%",
-    height: 8,
-    backgroundColor: COLORS.darkNavy,
-    borderRadius: 4,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  goalProgressFill: {
-    height: "100%",
-    backgroundColor: COLORS.gold,
-  },
-  goalPercentage: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.gold,
-  },
-  statsSection: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: COLORS.white,
-  },
-  sectionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  seeAllText: {
-    fontSize: 14,
-    color: COLORS.gold,
-  },
-  movieList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  bottomPadding: {
-    height: 120,
-  },
-  watchlistEmptyCard: {
-    marginHorizontal: 20,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
-    padding: 28,
-    alignItems: "center",
-  },
-  floatingButton: {
-    position: "absolute",
-    right: 20,
-    bottom: 80, // Tab bar 위에
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.gold,
-    alignItems: "center",
-    justifyContent: "center",
-    elevation: 5, // Android shadow
-    shadowColor: "#000", // iOS shadow
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
-  goalStepperRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center",
-    marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", gap: 8,
-  },
-  goalStepperButton: {
-    width: 44, height: 36, borderRadius: 10, backgroundColor: COLORS.darkNavy,
-    alignItems: "center", justifyContent: "center",
-  },
-  goalStepperButtonText: { color: COLORS.gold, fontSize: 14, fontWeight: "700" },
-  goalStepperValue: {
-    minWidth: 56, height: 36, borderRadius: 10, backgroundColor: "rgba(212,175,55,0.15)",
-    alignItems: "center", justifyContent: "center", paddingHorizontal: 8,
-  },
-  goalStepperValueText: { color: COLORS.gold, fontSize: 18, fontWeight: "800" },
-  collectionScrollList: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  collectionCard: {
-    width: 160,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 12,
-    padding: 12,
-  },
-  collectionPosterRow: {
-    flexDirection: "row",
-    height: 90,
-    gap: 4,
-    marginBottom: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  collectionPoster: {
-    flex: 1,
-    height: 90,
-    borderRadius: 6,
-    backgroundColor: COLORS.darkNavy,
-  },
-  collectionEmptyPoster: {
-    flex: 1,
-    height: 90,
-    borderRadius: 6,
-    backgroundColor: COLORS.darkNavy,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  collectionCardName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.white,
-    marginBottom: 2,
-  },
-  collectionCardCount: {
-    fontSize: 12,
-    color: COLORS.lightGray,
-  },
-  streakCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
-    padding: 16,
-  },
-  streakCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 14,
-    gap: 8,
-  },
-  streakCardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.white,
-    flex: 1,
-  },
-  streakCardValue: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#FF6B35",
-  },
-  streakWeekRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  streakDayItem: {
-    alignItems: "center",
-    gap: 4,
-  },
-  streakDayLabel: {
-    fontSize: 11,
-    color: COLORS.lightGray,
-    fontWeight: "600",
-  },
-  streakSundayLabel: {
-    color: "#e74c3c",
-  },
-  calendarCard: {
-    marginHorizontal: 20,
-    marginBottom: 24,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 16,
-    padding: 20,
-  },
-  calendarCardContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  calendarCardTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: COLORS.white,
-    marginBottom: 4,
-  },
-  calendarCardSubtitle: {
-    fontSize: 13,
-    color: COLORS.lightGray,
-  },
+  container: { flex: 1, backgroundColor: COLORS.darkNavy },
+  page: { alignSelf: "center" },
+  loadingState: { justifyContent: "center", alignItems: "center", padding: 32 },
+  intro: { paddingBottom: 32, marginBottom: 32, borderBottomWidth: 1, borderBottomColor: COLORS.deepGray },
+  eyebrow: { color: COLORS.gold, fontSize: 12, fontWeight: "600", letterSpacing: 1.2, marginBottom: 16 },
+  headerTitle: { color: COLORS.white, fontWeight: "600", letterSpacing: -1.1, marginBottom: 14 },
+  subtitle: { color: COLORS.lightGray, fontSize: 14, lineHeight: 22 },
+  actions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 18, marginTop: 24 },
+  primaryAction: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: COLORS.gold, borderRadius: 4, paddingHorizontal: 18, minHeight: 46 },
+  primaryActionText: { color: COLORS.darkNavy, fontSize: 14, fontWeight: "700" },
+  textAction: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
+  linkText: { color: COLORS.gold, fontSize: 13, fontWeight: "600" },
+  section: { marginBottom: 36 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18 },
+  sectionHeading: { flex: 1, gap: 5 },
+  sectionTitle: { color: COLORS.white, fontSize: 20, fontWeight: "600", letterSpacing: -0.4 },
+  sectionLink: { minHeight: 44, justifyContent: "center" },
+  caption: { color: COLORS.lightGray, fontSize: 12, lineHeight: 18 },
+  records: { flexDirection: "row", flexWrap: "wrap", columnGap: 28, rowGap: 20 },
+  record: { flexDirection: "row", gap: 16, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.deepGray },
+  poster: { borderRadius: 4, backgroundColor: COLORS.deepGray },
+  posterPlaceholder: { justifyContent: "center", alignItems: "center" },
+  recordInfo: { flex: 1, paddingTop: 2 },
+  recordTitle: { color: COLORS.white, fontSize: 16, fontWeight: "600", lineHeight: 22 },
+  recordMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 7 },
+  rating: { flexDirection: "row", alignItems: "center", gap: 4 },
+  ratingText: { color: COLORS.gold, fontSize: 12, fontWeight: "600" },
+  review: { color: COLORS.white, fontSize: 14, lineHeight: 23, marginTop: 12 },
+  reviewPrompt: { color: COLORS.lightGray, fontSize: 12, lineHeight: 20, marginTop: 12 },
+  shelf: { gap: 16, paddingBottom: 2 },
+  shelfTitle: { color: COLORS.white, fontSize: 14, fontWeight: "500", lineHeight: 20, marginTop: 10, marginBottom: 4 },
+  emptyState: { alignItems: "flex-start", paddingVertical: 24, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.deepGray, gap: 10 },
+  emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: "500" },
+  stateDescription: { color: COLORS.lightGray, fontSize: 14, lineHeight: 22, marginTop: 8 },
+  emptyLine: { color: COLORS.lightGray, fontSize: 13, lineHeight: 22, flexShrink: 1 },
+  emptyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 },
+  errorNotice: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 16, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.deepGray },
+  noticeText: { color: COLORS.lightGray, flex: 1, fontSize: 13, lineHeight: 20 },
+  collection: { paddingBottom: 4 },
+  collectionPosters: { flexDirection: "row", height: 114, gap: 4, overflow: "hidden", borderRadius: 4, backgroundColor: COLORS.deepGray },
+  collectionPoster: { flex: 1, height: "100%" },
+  collectionPlaceholder: { flex: 1, alignItems: "center", justifyContent: "center" },
+  tools: { borderTopWidth: 1, borderTopColor: COLORS.deepGray },
+  toolsToggle: { minHeight: 60, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  toolsTitle: { color: COLORS.lightGray, fontSize: 14, fontWeight: "500" },
+  toolsContent: { paddingBottom: 16, gap: 24 },
+  toolLinks: { flexDirection: "row", flexWrap: "wrap", columnGap: 24, rowGap: 4 },
+  toolLink: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 },
+  goal: { gap: 14 },
+  goalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  progressTrack: { height: 3, backgroundColor: COLORS.deepGray, overflow: "hidden" },
+  progressFill: { height: "100%", backgroundColor: COLORS.gold },
+  goalStepper: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  stepButton: { minWidth: 48, minHeight: 44, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: COLORS.deepGray, borderRadius: 4 },
+  disabled: { opacity: 0.4 },
 })

@@ -17,6 +17,8 @@ export default function FilterChip({ label, isActive, onPress }: FilterChipProps
       ]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
     >
       <Text style={[
         styles.label,
@@ -33,14 +35,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderRadius: 20,
-    backgroundColor: COLORS.deepGray,
+    borderRadius: 4,
+    minHeight: 44,
+    backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: COLORS.deepGray,
   },
   containerActive: {
-    backgroundColor: COLORS.gold,
-    borderColor: COLORS.gold,
+    backgroundColor: COLORS.white,
+    borderColor: COLORS.white,
   },
   label: {
     fontSize: 14,

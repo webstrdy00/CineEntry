@@ -12,6 +12,7 @@ import {
   clearTokens,
   isAuthSessionUnavailableError,
 } from '../services/authService';
+import { isWebOAuthOnlyMode } from '../config/runtime';
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -61,6 +62,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const normalizedUrl = url.trim();
 
     if (!normalizedUrl || !normalizedUrl.includes('/auth/')) {
+      return;
+    }
+
+    if (isWebOAuthOnlyMode) {
+      await clearTokens();
+      setUser(null);
       return;
     }
 
@@ -164,6 +171,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           console.log('🚀 initAuth 시작');
         }
 
+        if (isWebOAuthOnlyMode) {
+          await clearTokens();
+          if (mounted) {
+            setUser(null);
+          }
+          await finishLoading();
+          return;
+        }
+
         // 저장된 토큰 확인
         const accessToken = await getAccessToken();
 
@@ -219,7 +235,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let linkingSubscription: any;
 
     // 웹 환경에서 URL 파라미터 처리
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    if (
+      !isWebOAuthOnlyMode &&
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      typeof window.location !== 'undefined'
+    ) {
       const url = window.location.href;
       if (url.includes('/auth/')) {
         if (shouldCleanupWebAuthUrl(url)) {
@@ -261,7 +282,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
   };
 
-    const refreshUser = async () => {
+  const refreshUser = async () => {
+    if (isWebOAuthOnlyMode) {
+      setUser(null);
+      return;
+    }
+
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);

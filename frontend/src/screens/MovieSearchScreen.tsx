@@ -198,6 +198,7 @@ export default function MovieSearchScreen() {
   const [draft, setDraft] = useState<MovieDraft | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [preparingMovieKey, setPreparingMovieKey] = useState<string | null>(null)
+  const [showMetadata, setShowMetadata] = useState(false)
 
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -332,6 +333,7 @@ export default function MovieSearchScreen() {
 
     setPreparingMovieKey(movieKey)
     setSelectedTagIds([])
+    setShowMetadata(false)
     void loadTags()
 
     try {
@@ -354,6 +356,7 @@ export default function MovieSearchScreen() {
     setSelectedMovie(null)
     setDraft(null)
     setSelectedTagIds([])
+    setShowMetadata(false)
   }
 
   const updateDraftField = <K extends keyof MovieDraft>(field: K, value: MovieDraft[K]) => {
@@ -460,7 +463,6 @@ export default function MovieSearchScreen() {
       <TouchableOpacity
         style={[
           styles.movieItem,
-          alreadyAdded && styles.movieItemAdded,
           isSelectionLocked && styles.movieItemDisabled,
         ]}
         onPress={() => {
@@ -468,6 +470,7 @@ export default function MovieSearchScreen() {
         }}
         activeOpacity={0.85}
         disabled={isSelectionLocked}
+        accessibilityLabel={`${item.title}${item.year ? `, ${item.year}년` : ""}${alreadyAdded ? ", 보관함에 있음" : ""}`}
       >
         {imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.poster} />
@@ -478,37 +481,34 @@ export default function MovieSearchScreen() {
         )}
 
         <View style={styles.movieInfo}>
-          <Text style={styles.title} numberOfLines={1}>
-            {item.title}
-          </Text>
-          {item.original_title && (
+          <View style={styles.resultTitleRow}>
+            <Text style={styles.title} numberOfLines={2}>
+              {item.title}
+            </Text>
+            {item.year ? <Text style={styles.resultYear}>{item.year}</Text> : null}
+          </View>
+          {item.original_title && item.original_title !== item.title && (
             <Text style={styles.originalTitle} numberOfLines={1}>
               {item.original_title}
             </Text>
           )}
           <View style={styles.metadata}>
-            <View style={styles.resultChipRow}>
-              <View style={styles.resultMetaChip}>
-                <Text style={styles.resultMetaChipText}>{getContentTypeLabel(item.content_type)}</Text>
-              </View>
-              <View style={styles.resultMetaChip}>
-                <Text style={styles.resultMetaChipText}>{getReleaseChannelLabel(item.release_channel)}</Text>
-              </View>
-            </View>
-            {item.year && <Text style={styles.metadataText}>{item.year}</Text>}
-            {item.genre ? <Text style={styles.metadataText}>{item.genre}</Text> : null}
             {item.director && item.director !== "Unknown" ? (
-              <Text style={styles.metadataText}>{item.director}</Text>
+              <Text style={styles.metadataText} numberOfLines={1}>{item.director} 감독</Text>
             ) : null}
+            <Text style={styles.resultTypeText} numberOfLines={1}>
+              {getContentTypeLabel(item.content_type)}
+              {item.release_channel && item.release_channel !== "unknown" ? ` · ${getReleaseChannelLabel(item.release_channel)}` : ""}
+              {item.genre ? ` · ${item.genre}` : ""}
+            </Text>
           </View>
+          {alreadyAdded && (
+            <View style={styles.ownedLabel} pointerEvents="none">
+              <Ionicons name="bookmark-outline" size={12} color={COLORS.gold} />
+              <Text style={styles.ownedLabelText}>보관함에 있음</Text>
+            </View>
+          )}
         </View>
-
-        {alreadyAdded && (
-          <View style={styles.addedWatchlistChip} pointerEvents="none">
-            <Ionicons name="bookmark" size={12} color={COLORS.darkNavy} />
-            <Text style={styles.addedWatchlistChipText}>보관함</Text>
-          </View>
-        )}
 
         {isPreparing ? (
           <ActivityIndicator size="small" color={COLORS.gold} />
@@ -521,11 +521,15 @@ export default function MovieSearchScreen() {
 
   const renderSearchBody = () => (
     <>
+      <View style={styles.searchIntro}>
+        <Text style={styles.eyebrow}>보관함에 한 편 더</Text>
+        <Text style={styles.searchHeading}>기록할 작품 찾기</Text>
+      </View>
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color={COLORS.lightGray} />
         <TextInput
           style={styles.searchInput}
-          placeholder="작품 제목으로 검색..."
+          placeholder="작품 제목 또는 제목 + 연도"
           placeholderTextColor={COLORS.lightGray}
           value={searchQuery}
           onChangeText={(text) => {
@@ -546,6 +550,7 @@ export default function MovieSearchScreen() {
           {searchQuery.length > 0 && (
             <TouchableOpacity
               style={styles.searchActionButton}
+              accessibilityLabel="검색어 지우기"
               onPress={() => {
                 setSearchQuery("")
                 setHasSearched(false)
@@ -555,17 +560,17 @@ export default function MovieSearchScreen() {
               <Ionicons name="close-circle" size={20} color={COLORS.lightGray} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.searchActionButton} onPress={handleSearch} disabled={loading}>
-            <Ionicons name="search" size={18} color={COLORS.gold} />
+          <TouchableOpacity style={styles.searchActionButton} accessibilityLabel="작품 검색" onPress={handleSearch} disabled={loading}>
+            <Text style={styles.searchActionText}>검색</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {!hasSearched ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="search" size={64} color={COLORS.lightGray} />
-          <Text style={styles.emptyTitle}>작품을 검색해보세요</Text>
-          <Text style={styles.emptySubtitle}>제목이나 제목+연도로 찾으면 더 정확해요</Text>
+          <Ionicons name="film-outline" size={30} color={COLORS.lightGray} />
+          <Text style={styles.emptyTitle}>어떤 작품을 기억하고 있나요?</Text>
+          <Text style={styles.emptySubtitle}>제목에 연도를 더하면 같은 이름의 작품을 구분하기 쉬워요.</Text>
         </View>
       ) : loading ? (
         <View style={styles.emptyContainer}>
@@ -574,7 +579,7 @@ export default function MovieSearchScreen() {
         </View>
       ) : searchResults.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="film-outline" size={64} color={COLORS.lightGray} />
+          <Ionicons name="film-outline" size={30} color={COLORS.lightGray} />
           <Text style={styles.emptyTitle}>검색 결과가 없습니다</Text>
           <Text style={styles.emptySubtitle}>작품 제목 위주로 다시 검색해보세요</Text>
         </View>
@@ -593,6 +598,8 @@ export default function MovieSearchScreen() {
           }
           contentContainerStyle={styles.resultsList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={<Text style={styles.resultCount}>검색 결과 {searchResults.length}편</Text>}
         />
       )}
     </>
@@ -602,7 +609,7 @@ export default function MovieSearchScreen() {
     if (!draft) return null
 
     return (
-      <ScrollView style={styles.editorContainer} contentContainerStyle={styles.editorContent}>
+      <ScrollView style={styles.editorContainer} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled">
         <View style={styles.editorTopCard}>
           {getDisplayImageUrl(draft) ? (
             <Image source={{ uri: getDisplayImageUrl(draft)! }} style={styles.editorPoster} />
@@ -612,17 +619,35 @@ export default function MovieSearchScreen() {
             </View>
           )}
           <View style={styles.editorTopInfo}>
+            <Text style={styles.eyebrow}>작품 확인</Text>
             <Text style={styles.editorTopTitle} numberOfLines={2}>
               {draft.title || "제목 없음"}
             </Text>
             <Text style={styles.editorTopMeta}>
-              {getContentTypeLabel(draft.content_type)} · {getReleaseChannelLabel(draft.release_channel)}
+              {[draft.year, draft.director, getContentTypeLabel(draft.content_type)].filter(Boolean).join(" · ")}
             </Text>
           </View>
         </View>
 
+        <Text style={styles.editorDescription}>
+          {selectedMovie && isMovieAdded(selectedMovie)
+            ? "이미 보관함에 있는 작품입니다. 기존 감상 상태와 기록은 변경되지 않아요."
+            : "보고 싶은 작품으로 보관합니다. 감상 후 별점과 감상평을 남길 수 있어요."}
+        </Text>
+
         <View style={styles.editorSection}>
-          <Text style={styles.editorSectionTitle}>기본정보</Text>
+          <Text style={styles.editorSectionTitle}>보관할 작품</Text>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>제목</Text>
+            <TextInput
+              style={styles.input}
+              value={draft.title}
+              onChangeText={(text) => updateDraftField("title", text)}
+              placeholder="작품 제목"
+              placeholderTextColor={COLORS.lightGray}
+            />
+          </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>작품 형식</Text>
@@ -642,6 +667,19 @@ export default function MovieSearchScreen() {
             </View>
           </View>
 
+        </View>
+
+        <View style={styles.editorSection}>
+          <TouchableOpacity style={styles.metadataToggle} onPress={() => setShowMetadata(!showMetadata)} accessibilityState={{ expanded: showMetadata }}>
+            <View style={styles.metadataToggleInfo}>
+              <Text style={styles.editorSectionTitle}>상세 작품 정보</Text>
+              <Text style={styles.optionalHint}>선택 사항 · 검색으로 불러온 정보 확인 및 수정</Text>
+            </View>
+            <Ionicons name={showMetadata ? "chevron-up" : "chevron-down"} size={18} color={COLORS.lightGray} />
+          </TouchableOpacity>
+
+          {showMetadata && (
+          <View style={styles.optionalFields}>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>공개 방식</Text>
             <View style={styles.optionGrid}>
@@ -658,17 +696,6 @@ export default function MovieSearchScreen() {
                 )
               })}
             </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>제목</Text>
-            <TextInput
-              style={styles.input}
-              value={draft.title}
-              onChangeText={(text) => updateDraftField("title", text)}
-              placeholder="작품 제목"
-              placeholderTextColor={COLORS.lightGray}
-            />
           </View>
 
           <View style={styles.inputGroup}>
@@ -743,10 +770,12 @@ export default function MovieSearchScreen() {
               />
             </View>
           )}
+          </View>
+          )}
         </View>
 
         <View style={styles.editorSection}>
-          <Text style={styles.editorSectionTitle}>태그 선택</Text>
+          <Text style={styles.editorSectionTitle}>나의 태그 <Text style={styles.optionalHint}>선택 사항</Text></Text>
           {loadingTags ? (
             <View style={styles.tagLoadingRow}>
               <ActivityIndicator size="small" color={COLORS.gold} />
@@ -780,16 +809,18 @@ export default function MovieSearchScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.page}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={selectedMovie ? () => handleBackFromEditor() : () => navigation.goBack()}
           disabled={isSaving}
+          accessibilityLabel={selectedMovie ? "검색 결과로 돌아가기" : "이전 화면"}
         >
           <Ionicons name="arrow-back" size={24} color={COLORS.white} />
         </TouchableOpacity>
 
-        <Text style={styles.headerTitle}>{selectedMovie ? "작품 등록하기" : "작품 검색"}</Text>
+        <Text style={styles.headerTitle}>{selectedMovie ? "보관함에 담기" : "작품 검색"}</Text>
 
         {selectedMovie ? (
           <TouchableOpacity
@@ -802,7 +833,7 @@ export default function MovieSearchScreen() {
             {isSaving ? (
               <ActivityIndicator size="small" color={COLORS.darkNavy} />
             ) : (
-              <Text style={styles.saveHeaderButtonText}>저장</Text>
+              <Text style={styles.saveHeaderButtonText}>보관</Text>
             )}
           </TouchableOpacity>
         ) : (
@@ -820,6 +851,7 @@ export default function MovieSearchScreen() {
           </View>
         </View>
       ) : null}
+      </View>
     </View>
   )
 }
@@ -828,6 +860,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.darkNavy,
+  },
+  page: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 880,
+    alignSelf: "center",
   },
   header: {
     flexDirection: "row",
@@ -838,20 +876,22 @@ const styles = StyleSheet.create({
   },
   backButton: {
     width: 40,
+    height: 44,
+    justifyContent: "center",
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: "500",
+    color: COLORS.lightGray,
   },
   headerRightPlaceholder: {
     width: 56,
   },
   saveHeaderButton: {
     minWidth: 56,
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 3,
     backgroundColor: COLORS.gold,
     alignItems: "center",
     justifyContent: "center",
@@ -864,21 +904,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
+  searchIntro: {
+    paddingHorizontal: 24,
+    marginBottom: 24,
+  },
+  eyebrow: {
+    color: COLORS.lightGray,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  searchHeading: {
+    color: COLORS.white,
+    fontSize: 26,
+    lineHeight: 34,
+    fontWeight: "600",
+  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    marginHorizontal: 20,
+    backgroundColor: COLORS.darkGray,
+    borderWidth: 1,
+    borderColor: COLORS.deepGray,
+    marginHorizontal: 24,
     marginBottom: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 12,
+    paddingLeft: 14,
+    paddingRight: 4,
+    paddingVertical: 4,
+    borderRadius: 3,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
+    minWidth: 0,
     color: COLORS.white,
-    fontSize: 15,
+    fontSize: 14,
+    paddingVertical: 12,
   },
   searchActionButton: {
     width: 44,
@@ -891,6 +952,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 0,
   },
+  searchActionText: {
+    color: COLORS.gold,
+    fontSize: 12,
+    fontWeight: "600",
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -898,15 +964,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 17,
+    fontWeight: "500",
     color: COLORS.white,
     marginTop: 16,
     marginBottom: 8,
     textAlign: "center",
   },
   emptySubtitle: {
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 21,
     color: COLORS.lightGray,
     textAlign: "center",
   },
@@ -916,32 +983,29 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   resultsList: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 30,
   },
+  resultCount: {
+    color: COLORS.lightGray,
+    fontSize: 11,
+    marginBottom: 8,
+  },
   movieItem: {
-    position: "relative",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  movieItemAdded: {
-    borderColor: "rgba(212, 175, 55, 0.52)",
-    backgroundColor: COLORS.deepGray,
+    paddingVertical: 16,
+    gap: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.deepGray,
   },
   movieItemDisabled: {
     opacity: 0.72,
   },
   poster: {
-    width: 60,
-    height: 90,
-    borderRadius: 8,
+    width: 52,
+    height: 78,
+    borderRadius: 2,
     backgroundColor: COLORS.darkGray,
   },
   posterFallback: {
@@ -950,110 +1014,128 @@ const styles = StyleSheet.create({
   },
   movieInfo: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
+  },
+  resultTitleRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
   },
   title: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
+    lineHeight: 22,
     fontWeight: "600",
     color: COLORS.white,
   },
   originalTitle: {
-    fontSize: 13,
+    fontSize: 11,
+    lineHeight: 16,
     color: COLORS.lightGray,
   },
+  resultYear: {
+    color: COLORS.lightGray,
+    fontSize: 12,
+  },
   metadata: {
-    gap: 2,
-  },
-  resultChipRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 2,
-  },
-  resultMetaChip: {
-    borderRadius: 999,
-    backgroundColor: "rgba(212, 175, 55, 0.12)",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  resultMetaChipText: {
-    color: COLORS.gold,
-    fontSize: 10,
-    fontWeight: "700",
+    gap: 3,
   },
   metadataText: {
     fontSize: 12,
     color: COLORS.lightGray,
   },
-  addedWatchlistChip: {
-    position: "absolute",
-    right: 34,
-    top: 10,
+  resultTypeText: {
+    color: COLORS.lightGray,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  ownedLabel: {
     flexDirection: "row",
     alignItems: "center",
+    alignSelf: "flex-start",
     gap: 4,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: COLORS.gold,
-    shadowColor: COLORS.gold,
-    shadowOpacity: 0.28,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    marginTop: 3,
   },
-  addedWatchlistChipText: {
-    color: COLORS.darkNavy,
+  ownedLabelText: {
+    color: COLORS.gold,
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "500",
   },
   editorContainer: {
     flex: 1,
   },
   editorContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingBottom: 40,
-    gap: 16,
+    gap: 24,
   },
   editorTopCard: {
     flexDirection: "row",
-    gap: 12,
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 14,
-    padding: 12,
+    gap: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.deepGray,
   },
   editorPoster: {
-    width: 72,
-    height: 108,
-    borderRadius: 10,
+    width: 88,
+    height: 132,
+    borderRadius: 2,
     backgroundColor: COLORS.darkGray,
   },
   editorTopInfo: {
     flex: 1,
+    minWidth: 0,
     justifyContent: "center",
     gap: 5,
   },
   editorTopTitle: {
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 23,
+    lineHeight: 30,
+    fontWeight: "600",
     color: COLORS.white,
   },
   editorTopMeta: {
     fontSize: 12,
-    color: COLORS.gold,
-    fontWeight: "700",
+    lineHeight: 20,
+    color: COLORS.lightGray,
+  },
+  editorDescription: {
+    color: COLORS.lightGray,
+    fontSize: 13,
+    lineHeight: 22,
   },
   editorSection: {
-    backgroundColor: COLORS.deepGray,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.deepGray,
+    gap: 16,
   },
   editorSectionTitle: {
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
     color: COLORS.white,
+  },
+  metadataToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 4,
+    minHeight: 44,
+  },
+  metadataToggleInfo: {
+    flex: 1,
+    gap: 6,
+  },
+  optionalHint: {
+    color: COLORS.lightGray,
+    fontSize: 11,
+    fontWeight: "400",
+    lineHeight: 18,
+  },
+  optionalFields: {
+    gap: 16,
   },
   inputGroup: {
     gap: 6,
@@ -1076,15 +1158,13 @@ const styles = StyleSheet.create({
   },
   optionChip: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderRadius: 999,
+    borderColor: COLORS.deepGray,
+    borderRadius: 3,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: COLORS.darkGray,
+    paddingVertical: 10,
   },
   optionChipSelected: {
     borderColor: COLORS.gold,
-    backgroundColor: COLORS.gold,
   },
   optionChipText: {
     color: COLORS.lightGray,
@@ -1092,12 +1172,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   optionChipTextSelected: {
-    color: COLORS.darkNavy,
+    color: COLORS.gold,
   },
   input: {
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    borderRadius: 10,
+    borderColor: COLORS.deepGray,
+    borderRadius: 3,
     backgroundColor: COLORS.darkGray,
     color: COLORS.white,
     fontSize: 14,
@@ -1124,11 +1204,11 @@ const styles = StyleSheet.create({
   },
   tagChip: {
     borderWidth: 1,
-    borderColor: "rgba(212, 175, 55, 0.4)",
-    borderRadius: 999,
+    borderColor: COLORS.deepGray,
+    borderRadius: 3,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "rgba(212, 175, 55, 0.08)",
+    paddingVertical: 10,
+    backgroundColor: COLORS.darkGray,
   },
   tagChipSelected: {
     backgroundColor: COLORS.gold,
@@ -1157,14 +1237,9 @@ const styles = StyleSheet.create({
     gap: 8,
     width: "100%",
     backgroundColor: COLORS.gold,
-    borderRadius: 14,
+    borderRadius: 3,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    shadowColor: COLORS.gold,
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
   },
   toastText: {
     color: COLORS.darkNavy,

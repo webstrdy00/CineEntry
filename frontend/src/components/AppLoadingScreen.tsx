@@ -10,7 +10,6 @@ import {
   useWindowDimensions,
   View,
 } from "react-native"
-import { LinearGradient } from "expo-linear-gradient"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { BRAND_LOCKUP_RATIO } from "../constants/branding"
@@ -152,15 +151,6 @@ export default function AppLoadingScreen() {
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={["#06080F", COLORS.darkNavy, "#111522"]}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.textureOverlay} pointerEvents="none" />
-      <View pointerEvents="none" style={styles.edgeVignette} />
-
       <View
         style={[
           styles.content,
@@ -231,7 +221,7 @@ export default function AppLoadingScreen() {
                 },
               ]}
             >
-              영화와 취향의 흐름을 차분하게 이어 붙이는 중
+              저장한 영화와 감상을 불러오고 있습니다
             </Text>
           </View>
         </View>
@@ -254,15 +244,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.darkNavy,
-  },
-  textureOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.02)",
-  },
-  edgeVignette: {
-    ...StyleSheet.absoluteFillObject,
-    borderColor: "rgba(0,0,0,0.26)",
-    borderWidth: 1,
   },
   content: {
     flex: 1,
@@ -288,7 +269,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   progressTrack: {
-    height: 6,
+    height: 2,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
@@ -299,14 +280,6 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 999,
     backgroundColor: COLORS.gold,
-    shadowColor: COLORS.gold,
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 4,
   },
   helper: {
     color: "rgba(255,255,255,0.54)",
@@ -326,7 +299,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   footerDot: {
-    color: "rgba(212,175,55,0.72)",
+    color: COLORS.gold,
     fontSize: 13,
     marginHorizontal: 8,
   },

@@ -64,6 +64,11 @@ def _normalize_oauth_client(client: str | None) -> str:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="지원하지 않는 OAuth 클라이언트입니다.",
         )
+    if normalized == "web" and not settings.OAUTH_WEB_CLIENT_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="웹 OAuth 클라이언트는 비활성화되어 있습니다.",
+        )
     return normalized
 
 

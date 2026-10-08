@@ -236,18 +236,6 @@ export interface MovieFormData {
 // UI Component Types
 // ============================================
 
-export interface MovieCardProps {
-  movie: Movie
-  onPress?: (movie: Movie) => void
-}
-
-export interface StatCardProps {
-  title: string
-  value: string | number
-  icon?: keyof typeof import("@expo/vector-icons").Ionicons["glyphMap"]
-  color?: string
-}
-
 export interface FilterChipProps {
   label: string
   isActive: boolean

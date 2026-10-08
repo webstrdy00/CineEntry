@@ -29,9 +29,11 @@ import StreakDetailScreen from "./src/screens/StreakDetailScreen"
 import WatchCalendarScreen from "./src/screens/WatchCalendarScreen"
 import WatchCalendarSettingsScreen from "./src/screens/WatchCalendarSettingsScreen"
 import AppLoadingScreen from "./src/components/AppLoadingScreen"
+import WebOAuthBridgeScreen from "./src/screens/WebOAuthBridgeScreen"
 
 import type { RootStackParamList, TabParamList } from "./src/types"
 import { COLORS } from "./src/constants/colors"
+import { isWebOAuthOnlyMode } from "./src/config/runtime"
 
 const Tab = createBottomTabNavigator<TabParamList>()
 const Stack = createNativeStackNavigator<RootStackParamList>()
@@ -46,8 +48,9 @@ function TabNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: COLORS.deepGray,
-          borderTopWidth: 0,
+          backgroundColor: COLORS.darkNavy,
+          borderTopWidth: 1,
+          borderTopColor: COLORS.deepGray,
           height: tabBarHeight,
           paddingBottom: tabBarBottomPadding,
           paddingTop: 8,
@@ -72,7 +75,7 @@ function TabNavigator() {
         name="Movies"
         component={MoviesScreen}
         options={{
-          tabBarLabel: "영화",
+          tabBarLabel: "보관함",
           tabBarIcon: ({ color, size }) => <Ionicons name="film" size={size} color={color} />,
         }}
       />
@@ -80,7 +83,7 @@ function TabNavigator() {
         name="Stats"
         component={StatsScreen}
         options={{
-          tabBarLabel: "통계",
+          tabBarLabel: "회고",
           tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
         }}
       />
@@ -188,6 +191,15 @@ function MainStack() {
 
 function RootNavigator() {
   const { isAuthenticated, loading } = useAuth()
+
+  if (isWebOAuthOnlyMode) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <WebOAuthBridgeScreen />
+      </>
+    )
+  }
 
   if (loading) {
     return (

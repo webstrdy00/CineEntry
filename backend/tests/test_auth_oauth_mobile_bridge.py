@@ -36,6 +36,16 @@ def test_get_oauth_redirect_uri_uses_backend_public_url_for_mobile(monkeypatch) 
     )
 
 
+def test_web_oauth_client_is_opt_in(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "google-client-id")
+    monkeypatch.setattr(settings, "OAUTH_WEB_CLIENT_ENABLED", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(google_auth_start("web"))
+
+    assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
+
+
 def test_consume_oauth_state_returns_redirect_client_and_pops_state() -> None:
     _oauth_states.clear()
     _store_oauth_state("state-123", "google", "mobile", code_verifier="verifier-123")
@@ -113,7 +123,7 @@ def test_google_auth_start_includes_pkce_parameters() -> None:
 
     try:
         settings.GOOGLE_CLIENT_ID = "google-client-id"
-        response = asyncio.run(google_auth_start("web"))
+        response = asyncio.run(google_auth_start("mobile"))
     finally:
         settings.GOOGLE_CLIENT_ID = original_client_id
 

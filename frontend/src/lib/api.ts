@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { isWebOAuthOnlyMode } from '../config/runtime';
 
 // ===========================
 // BaseResponse Type (백엔드 응답 구조)
@@ -44,6 +45,10 @@ const REFRESH_TOKEN_KEY = 'cineentry_refresh_token';
 // Token Helpers
 // ===========================
 const getAccessToken = async (): Promise<string | null> => {
+  if (isWebOAuthOnlyMode) {
+    return null;
+  }
+
   if (Platform.OS === 'web') {
     return localStorage.getItem(ACCESS_TOKEN_KEY);
   }
@@ -51,6 +56,10 @@ const getAccessToken = async (): Promise<string | null> => {
 };
 
 const getRefreshToken = async (): Promise<string | null> => {
+  if (isWebOAuthOnlyMode) {
+    return null;
+  }
+
   if (Platform.OS === 'web') {
     return localStorage.getItem(REFRESH_TOKEN_KEY);
   }
@@ -59,6 +68,12 @@ const getRefreshToken = async (): Promise<string | null> => {
 
 const saveTokens = async (accessToken: string, refreshToken: string): Promise<void> => {
   if (Platform.OS === 'web') {
+    if (isWebOAuthOnlyMode) {
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      return;
+    }
+
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
   } else {

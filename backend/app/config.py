@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     AUTH_REGISTER_ATTEMPT_WINDOW_SECONDS: int = 3600
     OAUTH_STATE_TTL_SECONDS: int = 600
     OAUTH_STATE_MAX_ENTRIES: int = 1000
+    OAUTH_WEB_CLIENT_ENABLED: bool = False
 
     # OAuth - Google
     GOOGLE_CLIENT_ID: Optional[str] = None

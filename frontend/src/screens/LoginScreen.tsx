@@ -113,9 +113,10 @@ const LoginScreen = ({ navigation }: any) => {
         <View style={[styles.header, { marginBottom: headerMarginBottom }]}>
           <BrandMark
             width={logoWidth}
-            subtitle="영화를 취향으로 남기는 기록장"
             variant="immersive"
           />
+          <Text style={styles.headline}>영화가 끝난 뒤,{'\n'}나의 기록은 남도록.</Text>
+          <Text style={styles.description}>본 영화와 짧은 감상, 다시 보고 싶은 작품을{'\n'}한곳에 모아두세요.</Text>
         </View>
 
         {/* 로그인 버튼들 */}
@@ -192,11 +193,30 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
     paddingHorizontal: 30,
     justifyContent: 'center',
   },
   header: {
     alignItems: 'center',
+  },
+  headline: {
+    color: COLORS.white,
+    fontSize: 29,
+    lineHeight: 40,
+    letterSpacing: -1,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 32,
+  },
+  description: {
+    color: COLORS.lightGray,
+    fontSize: 14,
+    lineHeight: 23,
+    textAlign: 'center',
+    marginTop: 16,
   },
   loginButtons: {
     gap: 14,
@@ -206,11 +226,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 4,
     gap: 12,
-    backgroundColor: COLORS.deepGray,
-    borderWidth: 1.5,
-    borderColor: COLORS.gold,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.mediumGray,
   },
   loginButtonText: {
     color: COLORS.white,
