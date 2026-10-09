@@ -2,18 +2,20 @@
 Authentication Schemas
 인증 관련 요청/응답 스키마
 """
+
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
 from app.services.password_policy_service import PASSWORD_MAX_LENGTH
 
-
 # ===========================
 # 요청 스키마
 # ===========================
 
+
 class RegisterRequest(BaseModel):
     """이메일 회원가입 요청"""
+
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
     display_name: str = Field(..., min_length=1, max_length=100)
@@ -21,44 +23,53 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     """이메일 로그인 요청"""
+
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class RefreshRequest(BaseModel):
     """토큰 갱신 요청"""
+
     refresh_token: str = Field(..., min_length=1, max_length=4096)
 
 
 class ChangePasswordRequest(BaseModel):
     """비밀번호 변경 요청"""
+
     current_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
     new_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class PasswordResetRequest(BaseModel):
     """비밀번호 재설정 요청"""
+
     email: EmailStr
 
 
 class PasswordResetConfirmRequest(BaseModel):
     """비밀번호 재설정 완료 요청"""
+
     token: str = Field(..., min_length=1, max_length=512)
     new_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
 
 
 class OAuthCallbackRequest(BaseModel):
     """OAuth 콜백 요청"""
+
     code: str = Field(..., min_length=1, max_length=2048)
-    state: Optional[str] = Field(None, min_length=1, max_length=512)
+    state: str = Field(..., min_length=1, max_length=512)
+    transaction_token: str = Field(..., min_length=32, max_length=128)
 
 
 # ===========================
 # 응답 스키마
 # ===========================
 
+
 class TokenResponse(BaseModel):
     """토큰 응답"""
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -67,6 +78,7 @@ class TokenResponse(BaseModel):
 
 class AuthUserResponse(BaseModel):
     """인증된 사용자 정보"""
+
     id: str
     email: str
     display_name: Optional[str] = None
@@ -83,11 +95,15 @@ class AuthUserResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     """로그인 응답 (토큰 + 사용자 정보)"""
+
     user: AuthUserResponse
     tokens: TokenResponse
 
 
 class OAuthUrlResponse(BaseModel):
     """OAuth 시작 URL 응답"""
+
     url: str
     state: str
+    transaction_token: str
+    expires_in: int

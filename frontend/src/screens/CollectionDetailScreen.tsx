@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, ActivityIndicator, RefreshControl, useWindowDimensions } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, ActivityIndicator, RefreshControl, Modal, FlatList, useWindowDimensions } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useRoute, useNavigation, useFocusEffect } from "@react-navigation/native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -13,9 +13,11 @@ import {
   updateCollection,
   deleteCollection,
   removeMovieFromCollection,
+  addMovieToCollection,
   syncAutoCollection,
   type CollectionDetail,
 } from "../services/collectionService"
+import { getMovies } from "../services/movieService"
 
 type CollectionDetailRouteProp = RouteProp<RootStackParamList, "CollectionDetail">
 type CollectionDetailNavigationProp = NativeStackNavigationProp<RootStackParamList>
@@ -42,6 +44,44 @@ export default function CollectionDetailScreen() {
   const [collectionName, setCollectionName] = useState("")
   const [collectionDescription, setCollectionDescription] = useState("")
   const [failedPosters, setFailedPosters] = useState<number[]>([])
+  const [pickerVisible, setPickerVisible] = useState(false)
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerError, setPickerError] = useState(false)
+  const [pickerQuery, setPickerQuery] = useState("")
+  const [candidates, setCandidates] = useState<CollectionDetail["movies"]>([])
+  const [addingMovieId, setAddingMovieId] = useState<number | null>(null)
+
+  const openMoviePicker = async () => {
+    if (!collection || collection.is_auto || pickerLoading) return
+    setPickerVisible(true)
+    setPickerLoading(true)
+    setPickerError(false)
+    setPickerQuery("")
+    try {
+      const movies = await getMovies()
+      const existingIds = new Set(collection.movies.map((movie) => movie.id))
+      setCandidates(movies.filter((movie: CollectionDetail["movies"][number]) => !existingIds.has(movie.id)))
+    } catch {
+      setCandidates([])
+      setPickerError(true)
+    } finally {
+      setPickerLoading(false)
+    }
+  }
+
+  const handleAddMovie = async (movieId: number) => {
+    if (addingMovieId !== null) return
+    setAddingMovieId(movieId)
+    try {
+      await addMovieToCollection(id, movieId)
+      setPickerVisible(false)
+      await loadData(false)
+    } catch {
+      showAlert("추가 실패", "작품을 컬렉션에 추가하지 못했습니다. 다시 시도해주세요.")
+    } finally {
+      setAddingMovieId(null)
+    }
+  }
 
   const loadData = useCallback(async (showLoading = true) => {
     try {
@@ -160,7 +200,7 @@ export default function CollectionDetailScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
@@ -170,7 +210,7 @@ export default function CollectionDetailScreen() {
         }
       >
         <View style={[styles.content, { width: contentWidth, paddingHorizontal: horizontalPadding }]}>
-          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <View style={[styles.header, { paddingTop: 8 }]}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} accessibilityRole="button" accessibilityLabel="뒤로 가기">
               <Ionicons name="chevron-back" size={24} color={COLORS.white} />
             </TouchableOpacity>
@@ -307,13 +347,49 @@ export default function CollectionDetailScreen() {
           )}
 
           {!collection.is_auto ? (
-            <TouchableOpacity style={styles.addMovieButton} onPress={() => navigation.navigate("MovieSearch")} accessibilityRole="button" accessibilityLabel="작품 추가를 위한 검색 열기">
+            <TouchableOpacity style={styles.addMovieButton} onPress={() => void openMoviePicker()} accessibilityRole="button" accessibilityLabel="보관함에서 컬렉션에 추가할 작품 선택">
               <Ionicons name="add-outline" size={20} color={COLORS.gold} />
               <Text style={styles.actionText}>작품 추가</Text>
             </TouchableOpacity>
           ) : null}
         </View>
       </ScrollView>
+      <Modal visible={pickerVisible} animationType="slide" onRequestClose={() => { if (addingMovieId === null) setPickerVisible(false) }}>
+        <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={[styles.pickerContent, { width: Math.min(width, 640) }]}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>보관함에서 작품 추가</Text>
+              <TouchableOpacity style={styles.textButton} disabled={addingMovieId !== null} onPress={() => setPickerVisible(false)} accessibilityRole="button" accessibilityLabel="작품 선택 닫기">
+                <Text style={styles.cancelText}>닫기</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.emptySubtitle}>이미 이 컬렉션에 담긴 작품은 제외됩니다.</Text>
+            <TextInput style={[styles.input, styles.pickerSearch]} value={pickerQuery} onChangeText={setPickerQuery} placeholder="보관함의 작품 제목 검색" placeholderTextColor={COLORS.lightGray} accessibilityLabel="추가할 작품 제목 검색" editable={addingMovieId === null} />
+            {pickerLoading ? <ActivityIndicator color={COLORS.gold} accessibilityLabel="작품 불러오는 중" /> : pickerError ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptySubtitle}>보관함을 불러오지 못했습니다.</Text>
+                <TouchableOpacity style={styles.textButton} onPress={() => void openMoviePicker()} accessibilityRole="button"><Text style={styles.actionText}>다시 시도</Text></TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                data={candidates.filter((movie) => movie.title.toLocaleLowerCase().includes(pickerQuery.trim().toLocaleLowerCase()))}
+                keyExtractor={(movie) => String(movie.id)}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={<Text style={styles.emptySubtitle}>{pickerQuery.trim() ? "검색 조건에 맞는 작품이 없습니다." : "추가할 작품이 없습니다. 보관함에 작품을 먼저 등록해주세요."}</Text>}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.pickerRow} disabled={addingMovieId !== null} onPress={() => void handleAddMovie(item.id)} accessibilityRole="button" accessibilityLabel={`${item.title} 컬렉션에 추가`} accessibilityState={{ disabled: addingMovieId !== null, busy: addingMovieId === item.id }}>
+                    <View style={styles.pickerTitle}>
+                      <Text style={styles.sectionTitle} numberOfLines={2}>{item.title}</Text>
+                      <Text style={styles.movieYear}>{item.year || "연도 정보 없음"}</Text>
+                    </View>
+                    {addingMovieId === item.id ? <ActivityIndicator color={COLORS.gold} /> : <Ionicons name="add-outline" size={24} color={COLORS.gold} />}
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
@@ -369,4 +445,8 @@ const styles = StyleSheet.create({
   emptyContainer: { paddingVertical: 36 },
   emptyTitle: { fontSize: 18, fontWeight: "600", color: COLORS.white, marginBottom: 10 },
   emptySubtitle: { fontSize: 14, lineHeight: 22, color: COLORS.lightGray },
+  pickerContent: { flex: 1, alignSelf: "center", paddingHorizontal: 20 },
+  pickerSearch: { marginVertical: 20 },
+  pickerRow: { flexDirection: "row", alignItems: "center", gap: 16, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: COLORS.deepGray, minHeight: 64 },
+  pickerTitle: { flex: 1, gap: 6 },
 })

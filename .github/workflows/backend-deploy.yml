@@ -9,6 +9,35 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: cineentry_audit
+          POSTGRES_PASSWORD: ci-isolated-integration-only
+          POSTGRES_DB: cineentry_audit
+        ports:
+          - 127.0.0.1:15439:5432
+        options: >-
+          --health-cmd "pg_isready -U cineentry_audit -d cineentry_audit"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 127.0.0.1:16389:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://cineentry_audit:ci-isolated-integration-only@127.0.0.1:15439/cineentry_audit
+      REDIS_URL: redis://127.0.0.1:16389/0
+      JWT_SECRET_KEY: ci-only-isolated-test-signing-key-not-for-production
+      DEBUG: "True"
+      EMAIL_LOG_ONLY: "True"
+      GCP_BUCKET_NAME: ""
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      FRONTEND_URL: http://localhost:8081
+      BACKEND_PUBLIC_URL: http://localhost:8000
     defaults:
       run:
         working-directory: backend
@@ -27,25 +56,60 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run backend tests
-        env:
-          DATABASE_URL: postgresql://ci:ci@localhost:5432/cineentry
-          REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ci-test-secret
-          FRONTEND_URL: http://localhost:8081
-          BACKEND_PUBLIC_URL: http://localhost:8000
         run: pytest tests
+
+      - name: Migrate isolated test database
+        run: alembic upgrade head
+
+      - name: Run real database and concurrency tests
+        env:
+          CINEENTRY_INTEGRATION_TESTS: "1"
+        run: |
+          pytest tests/test_backend_integration.py
+          pytest tests/test_media_cleanup.py -k postgres
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Check types and authentication behavior
+        run: |
+          npx tsc --noEmit
+          npm test
+      - name: Compile release bundles
+        env:
+          EXPO_PUBLIC_API_URL: https://api.example.test
+        run: npx expo export --platform all --output-dir "${{ runner.temp }}/cineentry-export"
 
   deploy:
     if: github.ref == 'refs/heads/main'
-    needs: test
+    needs: [test, frontend]
     runs-on: ubuntu-latest
     steps:
+      - name: Require verified SSH host identity
+        env:
+          GCP_HOST_FINGERPRINT: ${{ secrets.GCP_HOST_FINGERPRINT }}
+        run: |
+          if [ -z "$GCP_HOST_FINGERPRINT" ]; then
+            echo "Set GCP_HOST_FINGERPRINT from a trusted VM console before deploying."
+            exit 1
+          fi
       - name: Deploy to GCP VM
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.GCP_HOST }}
           username: ${{ secrets.GCP_USERNAME }}
           key: ${{ secrets.GCP_SSH_KEY }}
+          fingerprint: ${{ secrets.GCP_HOST_FINGERPRINT }}
           script_stop: true
           script: |
             set -euo pipefail
@@ -61,7 +125,7 @@ jobs:
               echo "/opt/cineentry/secrets/gcp-key.json is missing on the server"
               exit 1
             fi
-            docker compose -f docker-compose.prod.yml config >/dev/null
-            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            docker compose --env-file backend/.env.production -f docker-compose.prod.yml config --quiet
+            docker compose --env-file backend/.env.production -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 180
             docker image prune -f
-            docker compose -f docker-compose.prod.yml ps
+            docker compose --env-file backend/.env.production -f docker-compose.prod.yml ps

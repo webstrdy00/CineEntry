@@ -2,6 +2,7 @@
 Authentication API endpoints
 이메일/OAuth 로그인, 회원가입, 이메일 인증, 비밀번호 재설정, 토큰 갱신
 """
+
 import base64
 import hashlib
 import json
@@ -13,7 +14,15 @@ from string import Template
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    status,
+)
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
@@ -53,7 +62,7 @@ from app.services.response_serializers import serialize_auth_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# OAuth state 임시 저장. 단일 인스턴스용 fallback이므로 TTL과 상한을 둔다.
+# OAuth 연결 요청 임시 저장. 단일 인스턴스용이므로 TTL과 상한을 둔다.
 _oauth_states: dict[str, dict[str, str | float | None]] = {}
 
 
@@ -86,7 +95,7 @@ def _prune_oauth_states(now: float | None = None) -> None:
     expired_states = [
         state
         for state, payload in _oauth_states.items()
-        if float(payload.get("created_at") or 0) < expires_before
+        if float(payload.get("created_at") or 0) <= expires_before
     ]
     for state in expired_states:
         _oauth_states.pop(state, None)
@@ -108,24 +117,33 @@ def _store_oauth_state(
     provider: str,
     client: str,
     *,
+    transaction_token: str,
     code_verifier: str | None = None,
 ) -> None:
     _prune_oauth_states()
     _oauth_states[state] = {
         "provider": provider,
         "client": client,
+        "transaction_token_hash": hashlib.sha256(
+            transaction_token.encode("utf-8")
+        ).hexdigest(),
         "code_verifier": code_verifier,
         "created_at": time.monotonic(),
     }
     _prune_oauth_states()
 
 
-def _consume_oauth_state(state: str | None, provider: str) -> tuple[str, str | None]:
+def _consume_oauth_state(
+    state: str | None,
+    provider: str,
+    transaction_token: str | None,
+) -> tuple[str, str | None]:
     """
     OAuth state 1회용 검증/소비.
 
-    - state 누락 차단
+    - state 및 시작 기기의 transaction token 누락 차단
     - provider 불일치 차단 (google state를 kakao에 재사용 방지)
+    - 유효기간과 transaction token hash 검증 후에만 소비
     - web/mobile redirect 대상 불일치 방지
     - 재사용 차단(pop)
     """
@@ -134,9 +152,14 @@ def _consume_oauth_state(state: str | None, provider: str) -> tuple[str, str | N
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="state 값이 필요합니다.",
         )
+    if not transaction_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OAuth 연결 확인 정보가 필요합니다.",
+        )
 
     _prune_oauth_states()
-    saved_state = _oauth_states.pop(state, None)
+    saved_state = _oauth_states.get(state)
     if not saved_state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,12 +168,19 @@ def _consume_oauth_state(state: str | None, provider: str) -> tuple[str, str | N
 
     saved_provider = saved_state["provider"]
     saved_client = saved_state["client"]
-    if saved_provider != provider:
+    transaction_token_hash = hashlib.sha256(
+        transaction_token.encode("utf-8")
+    ).hexdigest()
+    if saved_provider != provider or not secrets.compare_digest(
+        saved_state.get("transaction_token_hash") or "",
+        transaction_token_hash,
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="유효하지 않은 state입니다.",
         )
 
+    _oauth_states.pop(state)
     return saved_client, saved_state.get("code_verifier")
 
 
@@ -165,6 +195,18 @@ def _provider_label(provider: str) -> str:
 
 def _build_auth_user_response(user: User) -> AuthUserResponse:
     return serialize_auth_user(user)
+
+
+def _json_for_inline_script(value: str) -> str:
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("'", "\\u0027")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
 
 def _get_oauth_redirect_uri(provider: str, client: str) -> str:
@@ -256,8 +298,7 @@ def _get_client_ip(http_request: Request) -> str:
     try:
         direct_addr = ip_address(direct_ip)
         trusted_proxy = any(
-            direct_addr in network
-            for network in settings.get_trusted_proxy_networks()
+            direct_addr in network for network in settings.get_trusted_proxy_networks()
         )
     except ValueError:
         trusted_proxy = False
@@ -274,7 +315,9 @@ def _get_client_ip(http_request: Request) -> str:
     return direct_ip
 
 
-def _rate_limit_identities(email: str | None, client_ip: str | None) -> list[tuple[str, str]]:
+def _rate_limit_identities(
+    email: str | None, client_ip: str | None
+) -> list[tuple[str, str]]:
     identities: list[tuple[str, str]] = []
     if email:
         identities.append(("email", email.strip().casefold()))
@@ -299,7 +342,9 @@ async def _ensure_not_rate_limited(
         if count >= limit:
             retry_after = max(
                 retry_after,
-                await auth_flow_service.get_rate_limit_retry_after(rate_limit_key, identity),
+                await auth_flow_service.get_rate_limit_retry_after(
+                    rate_limit_key, identity
+                ),
             )
 
     if retry_after > 0:
@@ -328,11 +373,11 @@ async def _record_rate_limited_attempt(
 async def _clear_rate_limited_attempts(
     purpose: str,
     *,
-    email: str | None = None,
-    client_ip: str | None = None,
+    email: str,
 ) -> None:
-    for identity_type, identity in _rate_limit_identities(email, client_ip):
-        await auth_flow_service.clear_rate_limit(f"{purpose}:{identity_type}", identity)
+    await auth_flow_service.clear_rate_limit(
+        f"{purpose}:email", email.strip().casefold()
+    )
 
 
 def _validate_password_or_raise(
@@ -368,8 +413,7 @@ def _ensure_email_verified_or_raise(user: User) -> None:
 
 def _is_google_email_verified(userinfo: dict) -> bool:
     return (
-        userinfo.get("verified_email") is True
-        or userinfo.get("email_verified") is True
+        userinfo.get("verified_email") is True or userinfo.get("email_verified") is True
     )
 
 
@@ -406,7 +450,9 @@ def _ensure_existing_user_can_link_oauth(user: User, provider: str) -> None:
     )
 
 
-async def _queue_verification_email(background_tasks: BackgroundTasks, user: User) -> None:
+async def _queue_verification_email(
+    background_tasks: BackgroundTasks, user: User
+) -> None:
     token = await auth_flow_service.create_email_verification_token(
         str(user.id),
         user.email,
@@ -420,11 +466,14 @@ async def _queue_verification_email(background_tasks: BackgroundTasks, user: Use
     )
 
 
-async def _queue_password_reset_email(background_tasks: BackgroundTasks, user: User) -> None:
+async def _queue_password_reset_email(
+    background_tasks: BackgroundTasks, user: User
+) -> None:
     token = await auth_flow_service.create_password_reset_token(
-        str(user.id),
-        user.email,
-        settings.PASSWORD_RESET_TOKEN_TTL_MINUTES * 60,
+        user_id=str(user.id),
+        email=user.email,
+        token_version=user.token_version,
+        ttl_seconds=settings.PASSWORD_RESET_TOKEN_TTL_MINUTES * 60,
     )
     background_tasks.add_task(
         auth_email_service.send_password_reset_email,
@@ -436,8 +485,7 @@ async def _queue_password_reset_email(background_tasks: BackgroundTasks, user: U
 
 
 def _render_auth_shell(page_title: str, content: str) -> HTMLResponse:
-    template = Template(
-        """
+    template = Template("""
         <!doctype html>
         <html lang="ko">
           <head>
@@ -923,9 +971,10 @@ def _render_auth_shell(page_title: str, content: str) -> HTMLResponse:
             </main>
           </body>
         </html>
-        """
+        """)
+    return HTMLResponse(
+        content=template.substitute(page_title=escape(page_title), content=content)
     )
-    return HTMLResponse(content=template.substitute(page_title=escape(page_title), content=content))
 
 
 def _render_status_page(
@@ -952,10 +1001,11 @@ def _render_status_page(
         </svg>
         """
     )
-    action_button, auto_open_script, helper_note = _build_status_action_markup(action_href, action_label)
+    action_button, auto_open_script, helper_note = _build_status_action_markup(
+        action_href, action_label
+    )
 
-    content = Template(
-        """
+    content = Template("""
         <section class="auth-card">
           <p class="brand-label">CineEntry</p>
           <div class="status-icon $icon_class">
@@ -967,8 +1017,7 @@ def _render_status_page(
           <p class="helper-note">$helper_note</p>
           $auto_open_script
         </section>
-        """
-    ).substitute(
+        """).substitute(
         icon_class="success" if success else "failure",
         seal_svg=seal_svg,
         title=escape(title),
@@ -992,7 +1041,7 @@ def _build_status_action_markup(
         action_button = f'<div class="action-row"><a class="button-link" href="{escaped_href}">{escape(action_label)}</a></div>'
         helper_note = "앱이 자동으로 열리지 않으면 버튼을 눌러주세요."
         if action_href.startswith("cineentry://"):
-            js_href = json.dumps(action_href, ensure_ascii=False)
+            js_href = _json_for_inline_script(action_href)
             auto_open_script = f"""
             <script>
               setTimeout(function () {{
@@ -1029,13 +1078,18 @@ def _render_handoff_status_page(
         </svg>
         """
     )
-    action_button, auto_open_script, helper_note = _build_status_action_markup(action_href, action_label)
+    action_button, auto_open_script, helper_note = _build_status_action_markup(
+        action_href, action_label
+    )
     if action_button:
-        action_button = action_button.replace('class="action-row"', 'class="action-row handoff-actions"')
-        action_button = action_button.replace('class="button-link"', 'class="button-link handoff-link"')
+        action_button = action_button.replace(
+            'class="action-row"', 'class="action-row handoff-actions"'
+        )
+        action_button = action_button.replace(
+            'class="button-link"', 'class="button-link handoff-link"'
+        )
 
-    content = Template(
-        """
+    content = Template("""
         <section class="auth-card handoff-card">
           <p class="brand-label handoff-brand">CineEntry</p>
           <div class="handoff-meta">
@@ -1054,19 +1108,18 @@ def _render_handoff_status_page(
           <p class="helper-note handoff-helper">$helper_note</p>
           $auto_open_script
         </section>
-        """
-    ).substitute(
+        """).substitute(
         provider_label=escape(provider_label),
         icon_class="accent" if success else "failure",
         accent_svg=accent_svg,
-        kicker=escape(
-            "로그인 연결" if success else "연결 중단"
-        ),
+        kicker=escape("로그인 연결" if success else "연결 중단"),
         title=escape(title),
         description=escape(description),
         progress_class="" if success else "failure",
         status=escape(
-            "자동으로 앱을 열고 있습니다." if success else "앱 복귀 링크를 준비했습니다."
+            "자동으로 앱을 열고 있습니다."
+            if success
+            else "앱 복귀 링크를 준비했습니다."
         ),
         caption=escape(
             "자동으로 열리지 않으면 아래 링크를 사용하세요."
@@ -1095,8 +1148,7 @@ def _render_password_reset_page(
             '<li class="policy-item" data-rule="match" data-passed="false">비밀번호 확인이 일치해야 합니다.</li>',
         ]
     )
-    content = Template(
-        """
+    content = Template("""
         <section class="auth-card">
           <p class="brand-label">CineEntry</p>
           <h1 class="page-title">새 비밀번호 설정</h1>
@@ -1461,13 +1513,12 @@ def _render_password_reset_page(
 
           updateFormState();
         </script>
-        """
-    ).substitute(
+        """).substitute(
         token=escaped_token,
         password_min_length=PASSWORD_MIN_LENGTH,
         policy_items=policy_items,
-        email_json=json.dumps(email or "", ensure_ascii=False),
-        display_name_json=json.dumps(display_name or "", ensure_ascii=False),
+        email_json=_json_for_inline_script(email or ""),
+        display_name_json=_json_for_inline_script(display_name or ""),
         completion_link=escape("cineentry://auth/password-reset-complete", quote=True),
     )
     return _render_auth_shell("CineEntry 비밀번호 재설정", content)
@@ -1477,7 +1528,12 @@ def _render_password_reset_page(
 # 이메일 인증 / 회원가입
 # ===========================
 
-@router.post("/register", response_model=BaseResponse[LoginResponse], status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/register",
+    response_model=BaseResponse[LoginResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def register(
     request: RegisterRequest,
     background_tasks: BackgroundTasks,
@@ -1485,7 +1541,7 @@ async def register(
     db: Session = Depends(get_db),
 ):
     """
-    이메일 회원가입 또는 기존 소셜 계정에 이메일 로그인 연결
+    새로운 이메일 계정 회원가입
     """
     client_ip = _get_client_ip(http_request)
     await _ensure_not_rate_limited(
@@ -1509,64 +1565,38 @@ async def register(
     )
 
     existing_user = db.query(User).filter(User.email == request.email).first()
-    created_user = False
-    should_send_verification = False
-
     if existing_user:
-        if existing_user.password_hash:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="이미 이메일 로그인이 연결된 계정입니다. 로그인해주세요.",
-            )
-
-        existing_user.password_hash = hash_password(request.password)
-        existing_user.auth_provider = "email"
-        if not existing_user.display_name:
-            existing_user.display_name = request.display_name
-
-        should_send_verification = not existing_user.email_verified
-        user = existing_user
-    else:
-        user = User(
-            email=request.email,
-            password_hash=hash_password(request.password),
-            display_name=request.display_name,
-            auth_provider="email",
-            google_connected=False,
-            kakao_connected=False,
-            email_verified=False,
-            token_version=0,
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="이미 가입된 이메일입니다. 로그인하거나 비밀번호 재설정을 진행해주세요.",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        created_user = True
-        should_send_verification = True
 
-        try:
-            auto_collection_service.create_default_collections(str(user.id), db)
-        except Exception:
-            pass
+    user = User(
+        email=request.email,
+        password_hash=hash_password(request.password),
+        display_name=request.display_name,
+        auth_provider="email",
+        google_connected=False,
+        kakao_connected=False,
+        email_verified=False,
+        token_version=0,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
 
-    if not created_user:
-        db.commit()
-        db.refresh(user)
+    try:
+        auto_collection_service.create_default_collections(str(user.id), db)
+    except Exception:
+        pass
 
-    if should_send_verification:
-        await _queue_verification_email(background_tasks, user)
+    await _queue_verification_email(background_tasks, user)
 
     tokens = create_tokens(user.id, user.token_version)
 
-    if created_user:
-        message = "회원가입이 완료되었습니다. 인증 메일을 확인해주세요."
-    elif should_send_verification:
-        message = "이메일 로그인이 연결되었습니다. 인증 메일을 확인해주세요."
-    else:
-        message = "이메일 로그인이 연결되었습니다."
-
     return BaseResponse(
         success=True,
-        message=message,
+        message="회원가입이 완료되었습니다. 인증 메일을 확인해주세요.",
         data=LoginResponse(
             user=_build_auth_user_response(user),
             tokens=TokenResponse(**tokens),
@@ -1658,6 +1688,7 @@ async def verify_email(
 # 로그인 / 토큰
 # ===========================
 
+
 @router.post("/login", response_model=BaseResponse[LoginResponse])
 async def login(
     request: LoginRequest,
@@ -1694,12 +1725,16 @@ async def login(
             client_ip=client_ip,
             ttl_seconds=settings.AUTH_LOGIN_ATTEMPT_WINDOW_SECONDS,
         )
-        social_methods = [_provider_label(method) for method in user.auth_methods if method != "email"]
+        social_methods = [
+            _provider_label(method) for method in user.auth_methods if method != "email"
+        ]
         if social_methods:
             social_login_help = " 또는 ".join(social_methods)
             detail = f"이 계정은 비밀번호 로그인이 설정되지 않았습니다. {social_login_help}로 로그인하거나 비밀번호 재설정을 진행해주세요."
         else:
-            detail = "비밀번호가 설정되지 않은 계정입니다. 비밀번호 재설정을 진행해주세요."
+            detail = (
+                "비밀번호가 설정되지 않은 계정입니다. 비밀번호 재설정을 진행해주세요."
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=detail,
@@ -1722,7 +1757,6 @@ async def login(
     await _clear_rate_limited_attempts(
         "login",
         email=request.email,
-        client_ip=client_ip,
     )
 
     user.auth_provider = "email"
@@ -1768,11 +1802,22 @@ async def refresh_token(
             detail="세션이 만료되었습니다. 다시 로그인해주세요.",
         )
 
-    user.token_version += 1
+    user_id = user.id
+    next_token_version = token_data["token_version"] + 1
+    updated = (
+        db.query(User)
+        .filter(User.id == user_id, User.token_version == token_data["token_version"])
+        .update({User.token_version: User.token_version + 1}, synchronize_session=False)
+    )
+    if updated != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="세션이 만료되었습니다. 다시 로그인해주세요.",
+        )
     db.commit()
-    db.refresh(user)
 
-    tokens = create_tokens(user.id, user.token_version)
+    tokens = create_tokens(user_id, next_token_version)
 
     return BaseResponse(
         success=True,
@@ -1786,14 +1831,18 @@ async def logout(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    updated = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .update({User.token_version: User.token_version + 1}, synchronize_session=False)
+    )
+    if updated != 1:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="사용자를 찾을 수 없습니다.",
         )
 
-    user.token_version += 1
     db.commit()
 
     return BaseResponse(
@@ -1809,7 +1858,7 @@ async def change_password(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).populate_existing().first()
 
     if not user:
         raise HTTPException(
@@ -1843,10 +1892,24 @@ async def change_password(
         display_name=user.display_name,
     )
 
-    user.password_hash = hash_password(request.new_password)
-    user.auth_provider = "email"
-    user.token_version += 1
-
+    updated = (
+        db.query(User)
+        .filter(User.id == user.id, User.token_version == user.token_version)
+        .update(
+            {
+                User.password_hash: hash_password(request.new_password),
+                User.auth_provider: "email",
+                User.token_version: User.token_version + 1,
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="세션이 만료되었습니다. 다시 로그인해주세요.",
+        )
     db.commit()
 
     return BaseResponse(
@@ -1859,6 +1922,19 @@ async def change_password(
 # ===========================
 # 비밀번호 재설정
 # ===========================
+
+
+def _is_password_reset_payload_valid(payload: object) -> bool:
+    return (
+        isinstance(payload, dict)
+        and isinstance(payload.get("user_id"), str)
+        and bool(payload["user_id"])
+        and isinstance(payload.get("email"), str)
+        and bool(payload["email"])
+        and type(payload.get("token_version")) is int
+        and payload["token_version"] >= 0
+    )
+
 
 @router.post("/password-reset/request", response_model=BaseResponse[dict])
 async def request_password_reset(
@@ -1888,8 +1964,8 @@ async def confirm_password_reset(
     request: PasswordResetConfirmRequest,
     db: Session = Depends(get_db),
 ):
-    payload = await auth_flow_service.consume_password_reset_token(request.token)
-    if not payload:
+    payload = await auth_flow_service.peek_password_reset_token(request.token)
+    if not _is_password_reset_payload_valid(payload):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="유효하지 않거나 만료된 재설정 링크입니다.",
@@ -1898,12 +1974,19 @@ async def confirm_password_reset(
     user = (
         db.query(User)
         .filter(User.id == payload["user_id"], User.email == payload["email"])
+        .populate_existing()
         .first()
     )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="사용자를 찾을 수 없습니다.",
+        )
+
+    if user.token_version != payload["token_version"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않거나 만료된 재설정 링크입니다.",
         )
 
     if user.password_hash and verify_password(request.new_password, user.password_hash):
@@ -1918,10 +2001,42 @@ async def confirm_password_reset(
         display_name=user.display_name,
     )
 
-    user.password_hash = hash_password(request.new_password)
-    user.auth_provider = "email"
-    user.email_verified = True
-    user.token_version += 1
+    password_hash = hash_password(request.new_password)
+    consumed_payload = await auth_flow_service.consume_password_reset_token(
+        request.token
+    )
+    if (
+        not _is_password_reset_payload_valid(consumed_payload)
+        or consumed_payload != payload
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않거나 만료된 재설정 링크입니다.",
+        )
+
+    updated = (
+        db.query(User)
+        .filter(
+            User.id == consumed_payload["user_id"],
+            User.email == consumed_payload["email"],
+            User.token_version == consumed_payload["token_version"],
+        )
+        .update(
+            {
+                User.password_hash: password_hash,
+                User.auth_provider: "email",
+                User.email_verified: True,
+                User.token_version: User.token_version + 1,
+            },
+            synchronize_session=False,
+        )
+    )
+    if updated != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않거나 만료된 재설정 링크입니다.",
+        )
     db.commit()
 
     return BaseResponse(
@@ -1937,7 +2052,7 @@ async def password_reset_page(
     db: Session = Depends(get_db),
 ):
     payload = await auth_flow_service.peek_password_reset_token(token)
-    if not payload:
+    if not _is_password_reset_payload_valid(payload):
         return _render_status_page(
             "재설정 링크가 유효하지 않습니다.",
             "링크가 만료되었거나 이미 사용되었습니다. 앱에서 비밀번호 재설정을 다시 요청해주세요.",
@@ -1961,6 +2076,15 @@ async def password_reset_page(
             action_label="앱으로 돌아가기",
         )
 
+    if user.token_version != payload["token_version"]:
+        return _render_status_page(
+            "재설정 링크가 유효하지 않습니다.",
+            "계정 보안 정보가 변경되었습니다. 앱에서 비밀번호 재설정을 다시 요청해주세요.",
+            success=False,
+            action_href="cineentry://auth/password-reset-complete",
+            action_label="앱으로 돌아가기",
+        )
+
     return _render_password_reset_page(
         token,
         email=user.email,
@@ -1972,6 +2096,7 @@ async def password_reset_page(
 # Google OAuth
 # ===========================
 
+
 @router.get("/google", response_model=BaseResponse[OAuthUrlResponse])
 async def google_auth_start(client: str = Query("web")):
     if not settings.GOOGLE_CLIENT_ID:
@@ -1982,11 +2107,13 @@ async def google_auth_start(client: str = Query("web")):
 
     oauth_client = _normalize_oauth_client(client)
     state = secrets.token_urlsafe(32)
+    transaction_token = secrets.token_urlsafe(32)
     code_verifier, code_challenge = _build_pkce_pair()
     _store_oauth_state(
         state,
         "google",
         oauth_client,
+        transaction_token=transaction_token,
         code_verifier=code_verifier,
     )
     redirect_uri = _get_oauth_redirect_uri("google", oauth_client)
@@ -2008,7 +2135,12 @@ async def google_auth_start(client: str = Query("web")):
     return BaseResponse(
         success=True,
         message="Google 인증 URL",
-        data=OAuthUrlResponse(url=url, state=state),
+        data=OAuthUrlResponse(
+            url=url,
+            state=state,
+            transaction_token=transaction_token,
+            expires_in=settings.OAUTH_STATE_TTL_SECONDS,
+        ),
     )
 
 
@@ -2033,7 +2165,9 @@ async def google_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    oauth_client, code_verifier = _consume_oauth_state(request.state, "google")
+    oauth_client, code_verifier = _consume_oauth_state(
+        request.state, "google", request.transaction_token
+    )
     if not code_verifier:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2133,6 +2267,7 @@ async def google_auth_callback(
 # Kakao OAuth
 # ===========================
 
+
 @router.get("/kakao", response_model=BaseResponse[OAuthUrlResponse])
 async def kakao_auth_start(client: str = Query("web")):
     if not settings.KAKAO_CLIENT_ID:
@@ -2143,7 +2278,10 @@ async def kakao_auth_start(client: str = Query("web")):
 
     oauth_client = _normalize_oauth_client(client)
     state = secrets.token_urlsafe(32)
-    _store_oauth_state(state, "kakao", oauth_client)
+    transaction_token = secrets.token_urlsafe(32)
+    _store_oauth_state(
+        state, "kakao", oauth_client, transaction_token=transaction_token
+    )
     redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)
 
     params = {
@@ -2158,7 +2296,12 @@ async def kakao_auth_start(client: str = Query("web")):
     return BaseResponse(
         success=True,
         message="Kakao 인증 URL",
-        data=OAuthUrlResponse(url=url, state=state),
+        data=OAuthUrlResponse(
+            url=url,
+            state=state,
+            transaction_token=transaction_token,
+            expires_in=settings.OAUTH_STATE_TTL_SECONDS,
+        ),
     )
 
 
@@ -2183,7 +2326,9 @@ async def kakao_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    oauth_client, _ = _consume_oauth_state(request.state, "kakao")
+    oauth_client, _ = _consume_oauth_state(
+        request.state, "kakao", request.transaction_token
+    )
     redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)
 
     async with httpx.AsyncClient() as client:
@@ -2280,6 +2425,7 @@ async def kakao_auth_callback(
 # ===========================
 # 현재 사용자 정보
 # ===========================
+
 
 @router.get("/me", response_model=BaseResponse[AuthUserResponse])
 async def get_current_user(

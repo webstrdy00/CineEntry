@@ -2,6 +2,7 @@
 Image Pydantic schemas
 이미지 관련 스키마 (티켓, 포토카드 등)
 """
+
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -9,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class UserImageBase(BaseModel):
     """UserImage 기본 스키마"""
+
     user_movie_id: int
     image_type: str = Field(..., pattern="^(ticket|photocard|other)$", max_length=20)
     image_url: str = Field(..., min_length=1, max_length=4096)
@@ -17,16 +19,19 @@ class UserImageBase(BaseModel):
 
 class UserImageCreate(UserImageBase):
     """UserImage 생성 스키마"""
+
     pass
 
 
 class UserImageUpdate(BaseModel):
     """UserImage 업데이트 스키마"""
+
     thumbnail_url: Optional[str] = None
 
 
 class UserImageResponse(UserImageBase):
     """UserImage 응답 스키마"""
+
     id: int
     created_at: datetime
 
@@ -34,24 +39,9 @@ class UserImageResponse(UserImageBase):
         from_attributes = True
 
 
-class UploadUrlRequest(BaseModel):
-    """업로드 Signed URL 요청"""
-    file_name: str = Field(..., min_length=1, max_length=255)
-    file_type: str = Field(..., min_length=1, max_length=100)  # "image/jpeg", "image/png", etc.
-    file_size: int = Field(..., ge=1)
-
-
-class UploadUrlResponse(BaseModel):
-    """업로드 Signed URL 응답"""
-    upload_url: str
-    file_url: str  # 업로드 직후 미리보기/즉시 조회용 Signed URL
-    file_key: str  # 내부 객체 키
-    storage_url: str  # DB에 저장할 영구 참조값 (gcs://bucket/key)
-    expires_in: int  # seconds
-
-
 class StoredFileResponse(BaseModel):
     """백엔드 업로드 완료 응답"""
+
     file_url: str
     file_key: str
     storage_url: str

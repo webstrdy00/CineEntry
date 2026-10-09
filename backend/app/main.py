@@ -11,6 +11,7 @@ async def lifespan(app: FastAPI):
     FastAPI lifespan events
     """
     # Startup
+    settings.validate_production()
     await redis_service.connect()
     print("✅ Redis connected")
     yield
@@ -31,7 +32,9 @@ app = FastAPI(
 
 cors_origins = settings.get_cors_allowed_origins()
 if not cors_origins:
-    print("⚠️  CORS_ALLOWED_ORIGINS 또는 FRONTEND_URL이 비어 있어 브라우저 요청이 차단됩니다.")
+    print(
+        "⚠️  CORS_ALLOWED_ORIGINS 또는 FRONTEND_URL이 비어 있어 브라우저 요청이 차단됩니다."
+    )
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +43,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def protect_auth_responses(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    if request.url.path.startswith("/api/v1/auth/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.get("/")

@@ -1,6 +1,7 @@
 import secrets
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Optional
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings
 
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "CineEntry API"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
     FRONTEND_URL: str = "http://localhost:8081"  # 프론트엔드 URL (OAuth 콜백용)
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"  # 이메일 인증/재설정 링크용
     CORS_ALLOWED_ORIGINS: Optional[str] = None
@@ -69,7 +70,7 @@ class Settings(BaseSettings):
     # Email delivery
     EMAIL_FROM_ADDRESS: str = "no-reply@cineentry.app"
     EMAIL_FROM_NAME: str = "CineEntry"
-    EMAIL_LOG_ONLY: bool = True
+    EMAIL_LOG_ONLY: bool = False
     SMTP_HOST: Optional[str] = None
     SMTP_PORT: int = 587
     SMTP_USERNAME: Optional[str] = None
@@ -94,10 +95,46 @@ class Settings(BaseSettings):
         if self.JWT_SECRET_KEY:
             return self.JWT_SECRET_KEY
         if not self.DEBUG:
-            raise ValueError("DEBUG=False 환경에서는 JWT_SECRET_KEY를 반드시 설정해야 합니다.")
+            raise ValueError(
+                "DEBUG=False 환경에서는 JWT_SECRET_KEY를 반드시 설정해야 합니다."
+            )
         # 개발 환경용 임시 시크릿 (재시작시 변경됨)
         print("⚠️  JWT_SECRET_KEY가 설정되지 않았습니다. 임시 키를 사용합니다.")
         return secrets.token_urlsafe(32)
+
+    def validate_production(self) -> None:
+        """운영 설정 오류는 비밀값을 노출하지 않고 시작 전에 차단한다."""
+        if self.DEBUG:
+            return
+        errors: list[str] = []
+        secret = self.JWT_SECRET_KEY or ""
+        if (
+            len(secret.strip().encode("utf-8")) < 32
+            or len(set(secret)) < 2
+            or secret == "your-super-secret-jwt-key-generate-random-string"
+        ):
+            errors.append(
+                "JWT_SECRET_KEY must be non-placeholder and at least 32 bytes"
+            )
+        for name in ("FRONTEND_URL", "BACKEND_PUBLIC_URL"):
+            value = urlparse(getattr(self, name))
+            if (
+                value.scheme != "https"
+                or not value.hostname
+                or value.username
+                or value.password
+            ):
+                errors.append(f"{name} must be an HTTPS URL without credentials")
+        if self.EMAIL_LOG_ONLY:
+            errors.append("EMAIL_LOG_ONLY must be disabled")
+        if not self.SMTP_HOST:
+            errors.append("SMTP_HOST is required")
+        if bool(self.SMTP_USERNAME) != bool(self.SMTP_PASSWORD):
+            errors.append("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+        if self.SMTP_USE_TLS == self.SMTP_USE_SSL:
+            errors.append("Enable exactly one of SMTP_USE_TLS and SMTP_USE_SSL")
+        if errors:
+            raise RuntimeError("Invalid production configuration: " + "; ".join(errors))
 
     def get_cors_allowed_origins(self) -> list[str]:
         """CORS 허용 origin 목록 반환"""
@@ -153,6 +190,7 @@ settings = Settings()
 
 # JWT Secret 미리 설정 (앱 시작 시 한 번만)
 _jwt_secret_key = settings.get_jwt_secret()
+
 
 def get_jwt_secret_key() -> str:
     return _jwt_secret_key

@@ -2,8 +2,10 @@
 Authentication flow token service
 이메일 인증/비밀번호 재설정용 1회성 토큰 저장
 """
+
 from __future__ import annotations
 
+import json
 import secrets
 from typing import Optional
 
@@ -27,7 +29,9 @@ class AuthFlowService:
 
     async def _create_token(self, prefix: str, payload: dict, ttl_seconds: int) -> str:
         token = secrets.token_urlsafe(32)
-        await redis_service.set_json(self._token_key(prefix, token), payload, ttl_seconds)
+        await redis_service.set_json(
+            self._token_key(prefix, token), payload, ttl_seconds
+        )
         return token
 
     async def _peek_token(self, prefix: str, token: str) -> Optional[dict]:
@@ -36,14 +40,24 @@ class AuthFlowService:
         return await redis_service.get_json(self._token_key(prefix, token))
 
     async def _consume_token(self, prefix: str, token: str) -> Optional[dict]:
-        payload = await self._peek_token(prefix, token)
-        if payload is None:
+        if not token:
             return None
 
-        await redis_service.delete(self._token_key(prefix, token))
-        return payload
+        if not redis_service.redis_client:
+            await redis_service.connect()
 
-    async def create_email_verification_token(self, user_id: str, email: str, ttl_seconds: int) -> str:
+        value = await redis_service.redis_client.getdel(self._token_key(prefix, token))
+        if not value:
+            return None
+
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return None
+
+    async def create_email_verification_token(
+        self, user_id: str, email: str, ttl_seconds: int
+    ) -> str:
         return await self._create_token(
             self.VERIFY_EMAIL_PREFIX,
             {"user_id": user_id, "email": email},
@@ -53,10 +67,12 @@ class AuthFlowService:
     async def consume_email_verification_token(self, token: str) -> Optional[dict]:
         return await self._consume_token(self.VERIFY_EMAIL_PREFIX, token)
 
-    async def create_password_reset_token(self, user_id: str, email: str, ttl_seconds: int) -> str:
+    async def create_password_reset_token(
+        self, user_id: str, email: str, token_version: int, ttl_seconds: int
+    ) -> str:
         return await self._create_token(
             self.PASSWORD_RESET_PREFIX,
-            {"user_id": user_id, "email": email},
+            {"user_id": user_id, "email": email, "token_version": token_version},
             ttl_seconds,
         )
 
@@ -85,7 +101,9 @@ class AuthFlowService:
     async def get_rate_limit_retry_after(self, purpose: str, identity: str) -> int:
         return await redis_service.ttl(self._rate_limit_key(purpose, identity))
 
-    async def record_rate_limit_attempt(self, purpose: str, identity: str, ttl_seconds: int) -> int:
+    async def record_rate_limit_attempt(
+        self, purpose: str, identity: str, ttl_seconds: int
+    ) -> int:
         return await redis_service.increment(
             self._rate_limit_key(purpose, identity),
             ttl_seconds,

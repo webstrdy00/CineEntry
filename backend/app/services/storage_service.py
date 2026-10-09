@@ -2,6 +2,7 @@
 Google Cloud Storage service
 비공개 버킷 Signed URL 생성 및 저장 참조값 관리
 """
+
 from __future__ import annotations
 
 import os
@@ -13,6 +14,7 @@ from urllib.parse import unquote, urlparse
 
 try:
     from google.cloud import storage
+    from google.api_core.exceptions import NotFound
 except ImportError:  # pragma: no cover - optional dependency at runtime
     storage = None
 
@@ -20,7 +22,7 @@ from app.config import settings
 
 
 class StorageService:
-    """GCS 비공개 버킷 업로드/조회 Signed URL 관리"""
+    """GCS 비공개 버킷 업로드 및 조회 Signed URL 관리"""
 
     STORAGE_URI_SCHEME = "gcs"
     STORAGE_ROOT = "cineentry"
@@ -43,7 +45,9 @@ class StorageService:
             return
 
         try:
-            credentials_path = self._resolve_credentials_path(settings.GOOGLE_APPLICATION_CREDENTIALS)
+            credentials_path = self._resolve_credentials_path(
+                settings.GOOGLE_APPLICATION_CREDENTIALS
+            )
 
             if credentials_path:
                 if not credentials_path.exists():
@@ -52,7 +56,9 @@ class StorageService:
                     )
 
                 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(credentials_path)
-                self.client = storage.Client.from_service_account_json(str(credentials_path))
+                self.client = storage.Client.from_service_account_json(
+                    str(credentials_path)
+                )
                 print(f"✅ GCS credentials loaded: {credentials_path}")
             else:
                 self.client = storage.Client()
@@ -101,7 +107,11 @@ class StorageService:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         unique_filename = f"{uuid.uuid4().hex}_{timestamp}{extension}"
         normalized_folder = folder.strip("/")
-        return f"{normalized_folder}/{unique_filename}" if normalized_folder else unique_filename
+        return (
+            f"{normalized_folder}/{unique_filename}"
+            if normalized_folder
+            else unique_filename
+        )
 
     def extract_file_key(self, file_reference: Optional[str]) -> Optional[str]:
         if not file_reference or not isinstance(file_reference, str):
@@ -127,14 +137,17 @@ class StorageService:
         path = parsed.path.lstrip("/")
         bucket_host = f"{(self.bucket_name or '').lower()}.storage.googleapis.com"
 
-        if self.bucket_name and host in {"storage.googleapis.com", "storage.cloud.google.com"}:
+        if self.bucket_name and host in {
+            "storage.googleapis.com",
+            "storage.cloud.google.com",
+        }:
             prefix = f"{self.bucket_name}/"
             if path.startswith(prefix):
-                return unquote(path[len(prefix):]) or None
+                return unquote(path[len(prefix) :]) or None
 
             download_prefix = f"download/storage/v1/b/{self.bucket_name}/o/"
             if path.startswith(download_prefix):
-                return unquote(path[len(download_prefix):]) or None
+                return unquote(path[len(download_prefix) :]) or None
 
         if self.bucket_name and host == bucket_host:
             return unquote(path) or None
@@ -144,7 +157,9 @@ class StorageService:
     def is_managed_reference(self, file_reference: Optional[str]) -> bool:
         return self.extract_file_key(file_reference) is not None
 
-    def normalize_storage_reference(self, file_reference: Optional[str]) -> Optional[str]:
+    def normalize_storage_reference(
+        self, file_reference: Optional[str]
+    ) -> Optional[str]:
         if file_reference is None:
             return None
 
@@ -158,39 +173,14 @@ class StorageService:
 
         return self.build_storage_uri(file_key)
 
-    def is_user_owned_reference(self, file_reference: Optional[str], user_id: str) -> bool:
+    def is_user_owned_reference(
+        self, file_reference: Optional[str], user_id: str
+    ) -> bool:
         file_key = self.extract_file_key(file_reference)
         if not file_key:
             return False
         expected_prefix = f"{self.STORAGE_ROOT}/users/{user_id}/"
         return file_key.startswith(expected_prefix)
-
-    def generate_upload_url(
-        self,
-        *,
-        file_name: str,
-        file_type: str,
-        folder: str,
-        expiration: int,
-    ) -> dict[str, str]:
-        self._require_bucket()
-
-        file_key = self._build_file_key(file_name=file_name, folder=folder)
-        blob = self.bucket.blob(file_key)
-
-        upload_url = blob.generate_signed_url(
-            version="v4",
-            expiration=timedelta(seconds=expiration),
-            method="PUT",
-            content_type=file_type,
-        )
-
-        return {
-            "upload_url": upload_url,
-            "file_url": self.generate_download_url(file_key, expiration=expiration),
-            "file_key": file_key,
-            "storage_url": self.build_storage_uri(file_key),
-        }
 
     def upload_bytes(
         self,
@@ -212,7 +202,9 @@ class StorageService:
             "storage_url": self.build_storage_uri(file_key),
         }
 
-    def generate_download_url(self, file_reference: str, expiration: Optional[int] = None) -> str:
+    def generate_download_url(
+        self, file_reference: str, expiration: Optional[int] = None
+    ) -> str:
         self._require_bucket()
 
         file_key = self.extract_file_key(file_reference) or file_reference.lstrip("/")
@@ -225,7 +217,9 @@ class StorageService:
             method="GET",
         )
 
-    def resolve_file_url(self, file_reference: Optional[str], expiration: Optional[int] = None) -> Optional[str]:
+    def resolve_file_url(
+        self, file_reference: Optional[str], expiration: Optional[int] = None
+    ) -> Optional[str]:
         if not file_reference:
             return file_reference
 
@@ -244,15 +238,16 @@ class StorageService:
             return False
 
         if not self.bucket:
-            print(f"⚠️  GCS delete skipped (client unavailable): {file_key}")
+            print("GCS delete skipped: storage client unavailable")
             return False
 
         try:
             self.bucket.blob(file_key).delete()
-            print(f"✅ GCS file deleted: {file_key}")
+            return True
+        except NotFound:
             return True
         except Exception as exc:  # pragma: no cover - depends on environment
-            print(f"⚠️  GCS file delete failed: {exc}")
+            print(f"GCS file delete failed: {type(exc).__name__}")
             return False
 
 

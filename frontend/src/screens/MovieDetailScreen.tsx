@@ -143,11 +143,12 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         const payload: any = { status: nextStatus }
 
         if (nextStatus === "completed") {
+          const now = new Date()
           payload.rating = options?.rating ?? rating
           payload.one_line_review = options?.review ?? review
           payload.watch_date = options?.watch_date
             ?? (status === "completed" ? movie?.watch_date : undefined)
-            ?? new Date().toISOString().split("T")[0]
+            ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
         } else {
           payload.rating = null
           payload.one_line_review = null
@@ -267,6 +268,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
   }, [id, isBestMovie, isSaving])
 
   const isSeries = (movie?.content_type ?? "movie") === "series"
+  const isSourceMetadata = Boolean(movie && (movie.tmdb_id != null || movie.kobis_code != null || movie.kmdb_id != null))
 
   const openProgressModal = () => {
     setPendingProgress(String(watchingProgressMinutes || ""))
@@ -291,7 +293,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         showAlert("알림", "올바른 회차 번호를 입력해주세요.")
         return
       }
-      if (pendingTotalEpisodes.trim() && (isNaN(totalEpisodes) || totalEpisodes < 0)) {
+      if (!isSourceMetadata && pendingTotalEpisodes.trim() && (isNaN(totalEpisodes) || totalEpisodes < 0)) {
         showAlert("알림", "올바른 전체 회차를 입력해주세요.")
         return
       }
@@ -302,7 +304,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
         const payload: any = {}
         if (pendingSeason.trim()) payload.current_season = season
         if (pendingEpisode.trim()) payload.current_episode = episode
-        if (pendingTotalEpisodes.trim()) payload.total_episodes = totalEpisodes
+        if (!isSourceMetadata && pendingTotalEpisodes.trim()) payload.total_episodes = totalEpisodes
         const updatedMovie = await updateMovie(id, payload)
         setMovie(updatedMovie)
       } catch (error) {
@@ -320,7 +322,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       return
     }
     const runtimeVal = parseInt(pendingRuntime, 10)
-    if (pendingRuntime.trim() && (isNaN(runtimeVal) || runtimeVal < 0)) {
+    if (!isSourceMetadata && pendingRuntime.trim() && (isNaN(runtimeVal) || runtimeVal < 0)) {
       showAlert("알림", "올바른 상영 시간(분)을 입력해주세요.")
       return
     }
@@ -329,7 +331,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
       setIsSaving(true)
       const payload: any = {}
       if (pendingProgress.trim()) payload.progress = minutes
-      if (pendingRuntime.trim()) payload.runtime = runtimeVal
+      if (!isSourceMetadata && pendingRuntime.trim()) payload.runtime = runtimeVal
       const updatedMovie = await updateMovie(id, payload)
       setMovie(updatedMovie)
     } catch (error) {
@@ -347,6 +349,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
   ] as const
 
   const persistGenre = async (nextList: string[]) => {
+    if (isSourceMetadata || isSaving) return
     const genreStr = nextList.join(", ")
     try {
       setIsSaving(true)
@@ -363,7 +366,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
   }
 
   const persistMovieMetadata = async (payload: { content_type?: ContentType; release_channel?: ReleaseChannel; total_episodes?: number }) => {
-    if (isSaving) return
+    if (isSourceMetadata || isSaving) return
     try {
       setIsSaving(true)
       const updatedMovie = await updateMovie(id, payload)
@@ -823,8 +826,10 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           <Text style={styles.synopsis}>{synopsisText}</Text>
         </View>
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>작품 정보 수정</Text>
+          <Text style={styles.sectionTitle}>{isSourceMetadata ? "작품 정보 · 읽기 전용" : "작품 정보 수정"}</Text>
+          {isSourceMetadata && <Text style={styles.saveHint}>외부 출처의 작품 정보는 수정할 수 없습니다. 나의 감상 기록과 태그는 변경할 수 있어요.</Text>}
           <Text style={styles.metaControlLabel}>작품 형식</Text>
+          {isSourceMetadata ? <Text style={styles.infoText}>{getContentTypeLabel(movie.content_type)}</Text> : (
           <View style={styles.metaOptionRow}>
             {CONTENT_TYPE_OPTIONS.map((option) => {
               const selected = (movie.content_type ?? "movie") === option.value
@@ -840,8 +845,10 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
               )
             })}
           </View>
+          )}
 
           <Text style={styles.metaControlLabel}>공개 방식</Text>
+          {isSourceMetadata ? <Text style={styles.infoText}>{getReleaseChannelLabel(movie.release_channel)}</Text> : (
           <View style={styles.metaOptionRow}>
             {RELEASE_CHANNEL_OPTIONS.map((option) => {
               const selected = (movie.release_channel ?? "unknown") === option.value
@@ -857,26 +864,34 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
               )
             })}
           </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>장르</Text>
           <View style={styles.tagsContainer}>
             {genreList.map((g) => (
+              isSourceMetadata ? (
+                <View key={g} style={styles.tag}><Text style={styles.tagText}>{g}</Text></View>
+              ) : (
               <TouchableOpacity key={g} style={styles.tag} onLongPress={() => void handleRemoveGenre(g)}>
                 <Text style={styles.tagText}>{g}</Text>
                 <TouchableOpacity onPress={() => void handleRemoveGenre(g)}>
                   <Ionicons name="close-circle" size={16} color={COLORS.gold} style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
               </TouchableOpacity>
+              )
             ))}
+            {isSourceMetadata && genreList.length === 0 && <Text style={styles.infoText}>정보 없음</Text>}
+            {!isSourceMetadata && (
             <TouchableOpacity style={styles.addTagButton} onPress={() => setShowGenrePicker(!showGenrePicker)} disabled={isSaving}>
               <Ionicons name="add" size={16} color={COLORS.gold} />
               <Text style={styles.addTagText}>장르 추가</Text>
             </TouchableOpacity>
+            )}
           </View>
 
-          {showGenrePicker && (
+          {!isSourceMetadata && showGenrePicker && (
             <View style={styles.tagPicker}>
               <Text style={styles.tagPickerTitle}>장르 선택</Text>
               <View style={styles.tagPickerList}>
@@ -1083,8 +1098,9 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
           <View style={styles.dateModalCard}>
             <Text style={styles.modalTitle}>{isSeries ? "시리즈 진행률" : "감상 진행 시간"}</Text>
             <Text style={styles.modalSubtitle}>
-              {isSeries ? "현재 시즌과 회차를 입력해 주세요." : "감상 시간과 총 상영시간을 입력해 주세요."}
+              {isSeries ? "현재 시즌과 회차를 입력해 주세요." : isSourceMetadata ? "나의 감상 시간을 입력해 주세요." : "감상 시간과 총 상영시간을 입력해 주세요."}
             </Text>
+            {isSourceMetadata && <Text style={styles.saveHint}>전체 회차와 상영시간은 외부 출처의 읽기 전용 정보입니다.</Text>}
 
             {isSeries ? (
               <>
@@ -1119,6 +1135,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
                 <Text style={styles.progressFieldLabel}>전체 회차</Text>
                 <View style={styles.progressInputRow}>
+                  {isSourceMetadata ? <Text style={styles.progressInput}>{totalEpisodes > 0 ? totalEpisodes : "정보 없음"}</Text> : (
                   <TextInput
                     style={styles.progressInput}
                     value={pendingTotalEpisodes}
@@ -1128,6 +1145,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
                     keyboardType="number-pad"
                     maxLength={4}
                   />
+                  )}
                   <Text style={styles.progressInputUnit}>화</Text>
                 </View>
               </>
@@ -1150,6 +1168,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
 
                 <Text style={styles.progressFieldLabel}>총 상영시간</Text>
                 <View style={styles.progressInputRow}>
+                  {isSourceMetadata ? <Text style={styles.progressInput}>{watchingRuntimeMinutes > 0 ? watchingRuntimeMinutes : "정보 없음"}</Text> : (
                   <TextInput
                     style={styles.progressInput}
                     value={pendingRuntime}
@@ -1159,6 +1178,7 @@ export default function MovieDetailScreen({ route, navigation }: MovieDetailScre
                     keyboardType="number-pad"
                     maxLength={4}
                   />
+                  )}
                   <Text style={styles.progressInputUnit}>분</Text>
                 </View>
               </>

@@ -1,6 +1,6 @@
 # FastAPI and Web Server
-fastapi==0.121.0
-starlette>=0.49.1,<0.50.0
+fastapi==0.143.0
+starlette==1.7.0
 uvicorn[standard]==0.24.0
 
 # Database
@@ -9,29 +9,30 @@ psycopg2-binary==2.9.9
 alembic==1.12.1
 
 # Authentication
-pyjwt[crypto]==2.8.0
-cryptography==46.0.5
-httpx==0.25.1
-passlib[bcrypt]==1.7.4
+pyjwt[crypto]==2.15.1
+cryptography==50.0.2
+httpx==0.28.1
+bcrypt==5.0.0
 
 # External APIs
 redis==5.0.1
 
 # AWS S3 (optional)
-boto3==1.29.7
+boto3==1.43.109
+urllib3==2.8.0
 
 # Google Cloud Storage (optional)
 google-cloud-storage>=2.16,<3.0
 
 # Configuration
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+python-dotenv==1.2.4
+pydantic==2.13.5
+pydantic-settings==2.15.0
 email-validator==2.2.0
-python-multipart==0.0.22
+python-multipart==0.0.32
 
 # Development
-pytest==7.4.3
-pytest-asyncio==0.21.1
-black==24.3.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+black==26.10.0
 flake8==6.1.0

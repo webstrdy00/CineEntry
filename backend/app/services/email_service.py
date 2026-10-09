@@ -2,6 +2,7 @@
 Email delivery service
 SMTP 또는 콘솔 로그 기반 메일 발송
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,25 +21,18 @@ class EmailService:
             return f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM_ADDRESS}>"
         return settings.EMAIL_FROM_ADDRESS
 
-    def _build_log_only_output(self, to_email: str, subject: str, preview_body: str) -> str:
-        return (
-            "\n"
-            "========== EMAIL_LOG_ONLY ==========\n"
-            f"to: {to_email}\n"
-            f"subject: {subject}\n"
-            f"log_only: {settings.EMAIL_LOG_ONLY}\n"
-            "body:\n"
-            f"{preview_body}\n"
-            "======== END EMAIL_LOG_ONLY ========\n"
-        )
-
-    def send_email(self, to_email: str, subject: str, html_body: str, text_body: str | None = None) -> None:
-        if settings.EMAIL_LOG_ONLY or not settings.SMTP_HOST:
-            preview_body = text_body or html_body
-            log_output = self._build_log_only_output(to_email, subject, preview_body)
-            print(log_output, flush=True)
-            logger.info(log_output)
+    def send_email(
+        self, to_email: str, subject: str, html_body: str, text_body: str | None = None
+    ) -> None:
+        if settings.EMAIL_LOG_ONLY:
+            if not settings.DEBUG:
+                raise RuntimeError("Email logging mode is not permitted in production")
+            logger.info(
+                "Development email delivery skipped; recipient and content redacted"
+            )
             return
+        if not settings.SMTP_HOST:
+            raise RuntimeError("SMTP_HOST is required for email delivery")
 
         message = EmailMessage()
         message["Subject"] = subject
@@ -50,7 +44,9 @@ class EmailService:
         context = ssl.create_default_context()
 
         if settings.SMTP_USE_SSL:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=context) as smtp:
+            with smtplib.SMTP_SSL(
+                settings.SMTP_HOST, settings.SMTP_PORT, context=context
+            ) as smtp:
                 self._login_and_send(smtp, message)
             return
 

@@ -270,7 +270,7 @@ const SignUpScreen = ({ navigation }: any) => {
         <View style={styles.footer}>
           <Text style={styles.footerText}>이미 계정이 있으신가요?</Text>
           <TouchableOpacity
-            onPress={() => navigation.navigate('Login')}
+            onPress={() => navigation.popTo('Login')}
             disabled={loading}
           >
             <Text style={styles.footerLink}>로그인</Text>

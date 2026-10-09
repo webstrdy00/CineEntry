@@ -1,7 +1,8 @@
-import axios from 'axios';
+import axios, { isAxiosError } from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { isWebOAuthOnlyMode } from '../config/runtime';
+import type { TokenResponse } from '../services/authService';
 
 // ===========================
 // BaseResponse Type (백엔드 응답 구조)
@@ -27,9 +28,11 @@ export const unwrapResponse = <T>(response: { data: BaseResponse<T> }): T => {
   return response.data.data as T;
 };
 
+const API_TIMEOUT_MS = 10000;
+
 const api = axios.create({
   baseURL: process.env.EXPO_PUBLIC_API_URL,
-  timeout: 10000,
+  timeout: API_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -104,7 +107,7 @@ export const setOnUnauthorized = (callback: () => void) => {
 // Token Refresh 상태 관리
 // ===========================
 type TokenRefreshSubscriber = {
-  resolve: (token: string) => void;
+  resolve: (tokens: TokenResponse | null) => void;
   reject: (error: unknown) => void;
 };
 
@@ -115,16 +118,88 @@ const subscribeTokenRefresh = (subscriber: TokenRefreshSubscriber) => {
   refreshSubscribers.push(subscriber);
 };
 
-const onTokenRefreshed = (token: string) => {
+const onTokenRefreshed = (tokens: TokenResponse | null) => {
   const subscribers = refreshSubscribers;
   refreshSubscribers = [];
-  subscribers.forEach(({ resolve }) => resolve(token));
+  subscribers.forEach(({ resolve }) => resolve(tokens));
 };
 
 const onTokenRefreshFailed = (error: unknown) => {
   const subscribers = refreshSubscribers;
   refreshSubscribers = [];
   subscribers.forEach(({ reject }) => reject(error));
+};
+
+export const isRefreshCredentialRejected = (error: unknown): boolean =>
+  isAxiosError(error) && error.response?.status === 401;
+
+export const refreshStoredTokens = async (): Promise<TokenResponse | null> => {
+  if (isRefreshing) {
+    return new Promise((resolve, reject) => {
+      subscribeTokenRefresh({ resolve, reject });
+    });
+  }
+
+  isRefreshing = true;
+
+  try {
+    if (isWebOAuthOnlyMode) {
+      await clearTokens();
+      onTokenRefreshed(null);
+      return null;
+    }
+
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) {
+      await clearTokens();
+      if (onUnauthorized) {
+        onUnauthorized();
+      }
+      onTokenRefreshed(null);
+      return null;
+    }
+
+    const response = await axios.post<BaseResponse<TokenResponse>>(
+      `${process.env.EXPO_PUBLIC_API_URL}/api/v1/auth/refresh`,
+      { refresh_token: refreshToken },
+      {
+        timeout: API_TIMEOUT_MS,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    const tokens = unwrapResponse(response);
+    if (
+      !tokens ||
+      typeof tokens.access_token !== 'string' ||
+      !tokens.access_token ||
+      typeof tokens.refresh_token !== 'string' ||
+      !tokens.refresh_token ||
+      tokens.token_type !== 'bearer' ||
+      !Number.isFinite(tokens.expires_in) ||
+      tokens.expires_in <= 0
+    ) {
+      throw new Error('토큰 갱신 응답이 유효하지 않습니다.');
+    }
+
+    await saveTokens(tokens.access_token, tokens.refresh_token);
+    onTokenRefreshed(tokens);
+    return tokens;
+  } catch (refreshError) {
+    try {
+      if (isRefreshCredentialRejected(refreshError)) {
+        await clearTokens();
+        if (onUnauthorized) {
+          onUnauthorized();
+        }
+      }
+    } finally {
+      // 정리 중 도착한 요청도 모두 실패시키고 다음 갱신을 허용한다.
+      onTokenRefreshFailed(refreshError);
+    }
+    throw refreshError;
+  } finally {
+    isRefreshing = false;
+  }
 };
 
 // ===========================
@@ -202,65 +277,22 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      // 이미 갱신 중이면 대기
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          subscribeTokenRefresh({
-            resolve: (token: string) => {
-              const headers = originalRequest.headers ?? {};
-              headers.Authorization = `Bearer ${token}`;
-              originalRequest.headers = headers;
-              resolve(api(originalRequest));
-            },
-            reject,
-          });
-        });
-      }
-
+      // 대기 요청에도 재시도 표시를 먼저 남겨 무한 갱신을 막는다.
       originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const refreshToken = await getRefreshToken();
-
-        if (!refreshToken) {
-          throw error;
-        }
-
-        // 토큰 갱신 요청
-        const response = await axios.post(
-          `${process.env.EXPO_PUBLIC_API_URL}/api/v1/auth/refresh`,
-          { refresh_token: refreshToken },
-          { headers: { 'Content-Type': 'application/json' } }
-        );
-
-        const { access_token, refresh_token } = response.data.data;
-
-        await saveTokens(access_token, refresh_token);
-
-        onTokenRefreshed(access_token);
-
-        // 원래 요청 재시도
-        const headers = originalRequest.headers ?? {};
-        headers.Authorization = `Bearer ${access_token}`;
-        originalRequest.headers = headers;
-        return api(originalRequest);
-      } catch (refreshError) {
-        onTokenRefreshFailed(refreshError);
-
-        if (__DEV__) {
-          console.log('🔒 토큰 갱신 실패 - 로그아웃');
-        }
-        await clearTokens();
-
-        if (onUnauthorized) {
-          onUnauthorized();
-        }
-
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
+      const currentAccessToken = await getAccessToken();
+      // 이전 토큰으로 보낸 요청이 늦게 실패한 경우 이미 갱신된 토큰을 사용한다.
+      const accessToken = currentAccessToken &&
+        originalRequest.headers?.Authorization !== `Bearer ${currentAccessToken}`
+        ? currentAccessToken
+        : (await refreshStoredTokens())?.access_token;
+      if (!accessToken) {
+        return Promise.reject(error);
       }
+
+      const headers = originalRequest.headers ?? {};
+      headers.Authorization = `Bearer ${accessToken}`;
+      originalRequest.headers = headers;
+      return api(originalRequest);
     }
 
     return Promise.reject(error);

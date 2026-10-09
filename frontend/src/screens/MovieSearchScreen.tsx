@@ -125,11 +125,6 @@ const parseOptionalInt = (value: string) => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-const CONTENT_TYPE_OPTIONS = [
-  { value: "movie" as const, label: "영화" },
-  { value: "series" as const, label: "시리즈" },
-]
-
 const RELEASE_CHANNEL_OPTIONS = [
   { value: "theatrical" as const, label: "극장 개봉" },
   { value: "ott_original" as const, label: "OTT 오리지널" },
@@ -166,22 +161,8 @@ const createDraftFromItem = (movie: MovieSearchItem): MovieDraft => ({
 })
 
 const mergeMovieItemWithMetadata = (movie: MovieSearchItem, metadata: MovieMetadata): MovieSearchItem => ({
-  ...movie,
-  title: metadata.title ?? movie.title,
-  original_title: metadata.original_title ?? movie.original_title,
-  content_type: metadata.content_type ?? movie.content_type ?? "movie",
-  release_channel: metadata.release_channel ?? movie.release_channel ?? "unknown",
-  director: metadata.director ?? movie.director,
-  year: metadata.year ?? movie.year,
-  runtime: metadata.runtime ?? movie.runtime,
-  total_episodes: metadata.total_episodes ?? movie.total_episodes,
-  genre: metadata.genre ?? movie.genre,
-  poster_url: metadata.poster_url ?? movie.poster_url,
-  backdrop_url: metadata.backdrop_url ?? movie.backdrop_url,
-  synopsis: metadata.synopsis ?? movie.synopsis,
-  kobis_code: metadata.kobis_code ?? movie.kobis_code,
-  tmdb_id: metadata.tmdb_id ?? movie.tmdb_id,
-  kmdb_id: metadata.kmdb_id ?? movie.kmdb_id,
+  ...metadata,
+  source: movie.source,
 })
 
 export default function MovieSearchScreen() {
@@ -343,9 +324,9 @@ export default function MovieSearchScreen() {
       setDraft(createDraftFromItem(mergedMovie))
     } catch (error) {
       console.error("영화 메타데이터 병합 실패:", error)
-      setSelectedMovie(movie)
-      setDraft(createDraftFromItem(movie))
-      showAlert("안내", "상세 정보를 모두 불러오지 못해 현재 검색 결과로 등록 화면을 열었어요.")
+      setSelectedMovie(null)
+      setDraft(null)
+      showAlert("정보 확인 실패", "작품 정보를 출처에서 확인하지 못해 추가할 수 없습니다. 잠시 후 다시 시도해 주세요.")
     } finally {
       setPreparingMovieKey(null)
     }
@@ -357,10 +338,6 @@ export default function MovieSearchScreen() {
     setDraft(null)
     setSelectedTagIds([])
     setShowMetadata(false)
-  }
-
-  const updateDraftField = <K extends keyof MovieDraft>(field: K, value: MovieDraft[K]) => {
-    setDraft((prev) => (prev ? { ...prev, [field]: value } : prev))
   }
 
   const handleToggleTag = (tagId: number) => {
@@ -429,7 +406,15 @@ export default function MovieSearchScreen() {
         failedTagCount = settled.filter((result) => result.status === "rejected").length
       }
 
-      markMovieAsAdded(metadataPayload)
+      markMovieAsAdded({
+        title: createdMovie.title_ko,
+        original_title: createdMovie.title_original,
+        year: createdMovie.production_year,
+        content_type: createdMovie.content_type,
+        tmdb_id: createdMovie.tmdb_id,
+        kobis_code: createdMovie.kobis_code,
+        kmdb_id: createdMovie.kmdb_id,
+      })
       handleBackFromEditor(true)
 
       if (failedTagCount > 0) {
@@ -439,14 +424,15 @@ export default function MovieSearchScreen() {
       }
     } catch (error: any) {
       console.error("영화 추가 실패:", error)
-      if (error.response?.status === 400 || error.response?.status === 409) {
+      if (error.response?.status === 400 && error.response?.data?.detail === "Movie already exists in your library") {
         if (selectedMovie) {
           markMovieAsAdded(selectedMovie)
         }
         handleBackFromEditor(true)
         showAlreadyAddedNotice()
       } else {
-        showAlert("오류", "작품 추가에 실패했습니다.")
+        const detail = error.response?.data?.detail
+        showAlert("오류", typeof detail === "string" ? detail : "작품 추가에 실패했습니다.")
       }
     } finally {
       setIsSaving(false)
@@ -637,34 +623,16 @@ export default function MovieSearchScreen() {
 
         <View style={styles.editorSection}>
           <Text style={styles.editorSectionTitle}>보관할 작품</Text>
+          <Text style={styles.optionalHint}>출처에서 확인한 작품 정보는 읽기 전용입니다. 나의 태그와 감상 기록은 수정할 수 있어요.</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>제목</Text>
-            <TextInput
-              style={styles.input}
-              value={draft.title}
-              onChangeText={(text) => updateDraftField("title", text)}
-              placeholder="작품 제목"
-              placeholderTextColor={COLORS.lightGray}
-            />
+            <Text style={styles.input}>{draft.title}</Text>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>작품 형식</Text>
-            <View style={styles.optionGrid}>
-              {CONTENT_TYPE_OPTIONS.map((option) => {
-                const selected = draft.content_type === option.value
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.optionChip, selected && styles.optionChipSelected]}
-                    onPress={() => updateDraftField("content_type", option.value)}
-                  >
-                    <Text style={[styles.optionChipText, selected && styles.optionChipTextSelected]}>{option.label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
+            <Text style={styles.input}>{getContentTypeLabel(draft.content_type)}</Text>
           </View>
 
         </View>
@@ -673,7 +641,7 @@ export default function MovieSearchScreen() {
           <TouchableOpacity style={styles.metadataToggle} onPress={() => setShowMetadata(!showMetadata)} accessibilityState={{ expanded: showMetadata }}>
             <View style={styles.metadataToggleInfo}>
               <Text style={styles.editorSectionTitle}>상세 작품 정보</Text>
-              <Text style={styles.optionalHint}>선택 사항 · 검색으로 불러온 정보 확인 및 수정</Text>
+              <Text style={styles.optionalHint}>외부 출처 정보 · 읽기 전용</Text>
             </View>
             <Ionicons name={showMetadata ? "chevron-up" : "chevron-down"} size={18} color={COLORS.lightGray} />
           </TouchableOpacity>
@@ -682,92 +650,40 @@ export default function MovieSearchScreen() {
           <View style={styles.optionalFields}>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>공개 방식</Text>
-            <View style={styles.optionGrid}>
-              {RELEASE_CHANNEL_OPTIONS.map((option) => {
-                const selected = draft.release_channel === option.value
-                return (
-                  <TouchableOpacity
-                    key={option.value}
-                    style={[styles.optionChip, selected && styles.optionChipSelected]}
-                    onPress={() => updateDraftField("release_channel", option.value)}
-                  >
-                    <Text style={[styles.optionChipText, selected && styles.optionChipTextSelected]}>{option.label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
+            <Text style={styles.input}>{getReleaseChannelLabel(draft.release_channel)}</Text>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>원제</Text>
-            <TextInput
-              style={styles.input}
-              value={draft.original_title}
-              onChangeText={(text) => updateDraftField("original_title", text)}
-              placeholder="Original title"
-              placeholderTextColor={COLORS.lightGray}
-            />
+            <Text style={styles.input}>{draft.original_title || "정보 없음"}</Text>
           </View>
 
           <View style={styles.inputRow}>
             <View style={[styles.inputGroup, styles.inputHalf]}>
               <Text style={styles.inputLabel}>감독</Text>
-              <TextInput
-                style={styles.input}
-                value={draft.director}
-                onChangeText={(text) => updateDraftField("director", text)}
-                placeholder="감독"
-                placeholderTextColor={COLORS.lightGray}
-              />
+              <Text style={styles.input}>{draft.director || "정보 없음"}</Text>
             </View>
             <View style={[styles.inputGroup, styles.inputHalf]}>
               <Text style={styles.inputLabel}>연도</Text>
-              <TextInput
-                style={styles.input}
-                value={draft.year}
-                onChangeText={(text) => updateDraftField("year", text.replace(/[^0-9]/g, ""))}
-                placeholder="예: 2025"
-                placeholderTextColor={COLORS.lightGray}
-                keyboardType="number-pad"
-              />
+              <Text style={styles.input}>{draft.year || "정보 없음"}</Text>
             </View>
           </View>
 
           <View style={styles.inputRow}>
             <View style={[styles.inputGroup, styles.inputHalf]}>
               <Text style={styles.inputLabel}>{draft.content_type === "series" ? "회당 시간(분)" : "상영시간(분)"}</Text>
-              <TextInput
-                style={styles.input}
-                value={draft.runtime}
-                onChangeText={(text) => updateDraftField("runtime", text.replace(/[^0-9]/g, ""))}
-                placeholder="예: 120"
-                placeholderTextColor={COLORS.lightGray}
-                keyboardType="number-pad"
-              />
+              <Text style={styles.input}>{draft.runtime || "정보 없음"}</Text>
             </View>
             <View style={[styles.inputGroup, styles.inputHalf]}>
               <Text style={styles.inputLabel}>장르</Text>
-              <TextInput
-                style={styles.input}
-                value={draft.genre}
-                onChangeText={(text) => updateDraftField("genre", text)}
-                placeholder="드라마, 액션"
-                placeholderTextColor={COLORS.lightGray}
-              />
+              <Text style={styles.input}>{draft.genre || "정보 없음"}</Text>
             </View>
           </View>
 
           {draft.content_type === "series" && (
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>전체 회차</Text>
-              <TextInput
-                style={styles.input}
-                value={draft.total_episodes}
-                onChangeText={(text) => updateDraftField("total_episodes", text.replace(/[^0-9]/g, ""))}
-                placeholder="예: 8"
-                placeholderTextColor={COLORS.lightGray}
-                keyboardType="number-pad"
-              />
+              <Text style={styles.input}>{draft.total_episodes || "정보 없음"}</Text>
             </View>
           )}
           </View>
@@ -1150,29 +1066,6 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 12,
     color: COLORS.lightGray,
-  },
-  optionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  optionChip: {
-    borderWidth: 1,
-    borderColor: COLORS.deepGray,
-    borderRadius: 3,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  optionChipSelected: {
-    borderColor: COLORS.gold,
-  },
-  optionChipText: {
-    color: COLORS.lightGray,
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  optionChipTextSelected: {
-    color: COLORS.gold,
   },
   input: {
     borderWidth: 1,

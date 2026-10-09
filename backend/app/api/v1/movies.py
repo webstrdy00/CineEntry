@@ -5,17 +5,28 @@ from typing import List, Optional
 from datetime import date
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.models.user_image import UserImage
 from app.models.user_movie import UserMovie
 from app.models.movie import Movie
 from app.models.movie_tag import MovieTag
 from app.models.tag import Tag
 from app.schemas.movie import (
-    UserMovieCreate, UserMovieUpdate, UserMovieResponse, FlatMovieResponse,
-    MovieCreate, MovieResponse, MovieSearchResult, MovieMetadata
+    UserMovieCreate,
+    UserMovieUpdate,
+    UserMovieResponse,
+    FlatMovieResponse,
+    MovieCreate,
+    MovieResponse,
+    MovieSearchResult,
+    MovieMetadata,
 )
 from app.schemas.common import BaseResponse
 from app.services.external_api_service import external_api_service
 from app.services.auto_collection_service import auto_collection_service
+from app.services.media_cleanup_service import (
+    cleanup_media_references,
+    lock_media_owner,
+)
 
 router = APIRouter(prefix="/movies", tags=["movies"])
 
@@ -49,7 +60,6 @@ def build_flat_movie_response(user_movie: UserMovie) -> FlatMovieResponse:
         watch_location=user_movie.watch_location,
         watched_with=user_movie.watched_with,
         is_best_movie=user_movie.is_best_movie,
-
         # Movie 필드 (평평하게 + 필드명 변경)
         movie_id=movie.id,
         title=movie.title,
@@ -68,7 +78,6 @@ def build_flat_movie_response(user_movie: UserMovie) -> FlatMovieResponse:
         tmdb_id=movie.tmdb_id,
         kmdb_id=movie.kmdb_id,
         tags=build_tag_items(user_movie),
-
         # 메타데이터
         created_at=user_movie.created_at,
         updated_at=user_movie.updated_at,
@@ -99,11 +108,31 @@ def parse_external_numeric_id(raw_id: str, source: str) -> int:
         )
 
 
+async def fetch_verified_metadata(source: str, external_id: str | int) -> MovieMetadata:
+    try:
+        metadata = await external_api_service.get_verified_metadata(source, external_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if metadata is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="작품 정보를 출처에서 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        )
+    return metadata
+
+
 @router.get("/", response_model=BaseResponse[List[FlatMovieResponse]])
 async def get_user_movies(
-    status: Optional[str] = Query(None, description="Filter by status: watchlist, watching, completed"),
-    content_type: Optional[str] = Query(None, description="Filter by content type: movie, series"),
-    release_channel: Optional[str] = Query(None, description="Filter by release channel: theatrical, ott_original, tv, unknown"),
+    status: Optional[str] = Query(
+        None, description="Filter by status: watchlist, watching, completed"
+    ),
+    content_type: Optional[str] = Query(
+        None, description="Filter by content type: movie, series"
+    ),
+    release_channel: Optional[str] = Query(
+        None,
+        description="Filter by release channel: theatrical, ott_original, tv, unknown",
+    ),
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
@@ -115,7 +144,11 @@ async def get_user_movies(
     - content_type: Filter by content type (movie, series)
     - release_channel: Filter by release channel (theatrical, ott_original, tv, unknown)
     """
-    query = db.query(UserMovie).options(joinedload(UserMovie.movie)).filter(UserMovie.user_id == user_id)
+    query = (
+        db.query(UserMovie)
+        .options(joinedload(UserMovie.movie))
+        .filter(UserMovie.user_id == user_id)
+    )
 
     if status:
         normalized_status = normalize_status_input(status)
@@ -133,14 +166,14 @@ async def get_user_movies(
     if release_channel:
         query = query.filter(Movie.release_channel == release_channel)
 
-    user_movies = query.order_by(UserMovie.updated_at.desc(), UserMovie.created_at.desc()).all()
+    user_movies = query.order_by(
+        UserMovie.updated_at.desc(), UserMovie.created_at.desc()
+    ).all()
 
     result = [build_flat_movie_response(um) for um in user_movies]
 
     return BaseResponse(
-        success=True,
-        message="Movies retrieved successfully",
-        data=result
+        success=True, message="Movies retrieved successfully", data=result
     )
 
 
@@ -160,9 +193,7 @@ async def search_movies(
     """
     results = await external_api_service.search_movies(q)
     return BaseResponse(
-        success=True,
-        message="Search completed successfully",
-        data=results
+        success=True, message="Search completed successfully", data=results
     )
 
 
@@ -194,13 +225,15 @@ async def get_movie_detail(
     movie_data = build_flat_movie_response(user_movie)
 
     return BaseResponse(
-        success=True,
-        message="Movie retrieved successfully",
-        data=movie_data
+        success=True, message="Movie retrieved successfully", data=movie_data
     )
 
 
-@router.post("/", response_model=BaseResponse[FlatMovieResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=BaseResponse[FlatMovieResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_movie(
     user_movie_data: UserMovieCreate,
     db: Session = Depends(get_db),
@@ -227,10 +260,13 @@ async def add_movie(
         )
 
     # Check if user already added this movie
-    existing = db.query(UserMovie).filter(
-        UserMovie.user_id == user_id,
-        UserMovie.movie_id == user_movie_data.movie_id
-    ).first()
+    existing = (
+        db.query(UserMovie)
+        .filter(
+            UserMovie.user_id == user_id, UserMovie.movie_id == user_movie_data.movie_id
+        )
+        .first()
+    )
 
     if existing:
         raise HTTPException(
@@ -244,10 +280,7 @@ async def add_movie(
         payload["watch_date"] = date.today()
 
     # Create user movie
-    user_movie = UserMovie(
-        user_id=user_id,
-        **payload
-    )
+    user_movie = UserMovie(user_id=user_id, **payload)
 
     db.add(user_movie)
     db.commit()
@@ -273,9 +306,7 @@ async def add_movie(
         pass
 
     return BaseResponse(
-        success=True,
-        message="Movie added successfully",
-        data=movie_data
+        success=True, message="Movie added successfully", data=movie_data
     )
 
 
@@ -314,7 +345,11 @@ async def update_movie(
     if "status" in update_dict:
         update_dict["status"] = normalize_status_input(update_dict["status"])
     next_status = update_dict.get("status", user_movie.status)
-    if next_status == "completed" and "watch_date" not in update_dict and user_movie.watch_date is None:
+    if (
+        next_status == "completed"
+        and "watch_date" not in update_dict
+        and user_movie.watch_date is None
+    ):
         update_dict["watch_date"] = date.today()
 
     # genre, runtime, 작품 형식/공개 방식은 Movie 테이블에 저장
@@ -330,6 +365,15 @@ async def update_movie(
     if "total_episodes" in update_dict:
         movie_updates["total_episodes"] = update_dict.pop("total_episodes")
     if movie_updates:
+        movie = user_movie.movie
+        if any(
+            identifier is not None
+            for identifier in (movie.tmdb_id, movie.kobis_code, movie.kmdb_id)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="외부 출처의 작품 정보는 읽기 전용입니다. 나의 감상 기록만 수정할 수 있습니다.",
+            )
         shared_by_other_users = (
             db.query(func.count(UserMovie.id))
             .filter(
@@ -345,10 +389,8 @@ async def update_movie(
                 detail="다른 사용자도 저장한 작품의 공통 메타데이터는 수정할 수 없습니다.",
             )
 
-        movie = db.query(Movie).filter(Movie.id == user_movie.movie_id).first()
-        if movie:
-            for field, value in movie_updates.items():
-                setattr(movie, field, value)
+        for field, value in movie_updates.items():
+            setattr(movie, field, value)
 
     for field, value in update_dict.items():
         setattr(user_movie, field, value)
@@ -376,9 +418,7 @@ async def update_movie(
         pass
 
     return BaseResponse(
-        success=True,
-        message="Movie updated successfully",
-        data=movie_data
+        success=True, message="Movie updated successfully", data=movie_data
     )
 
 
@@ -391,6 +431,8 @@ async def delete_movie(
     """
     Remove a movie from user's library
     """
+    lock_media_owner(db, user_id)
+
     user_movie = (
         db.query(UserMovie)
         .filter(UserMovie.user_id == user_id, UserMovie.id == user_movie_id)
@@ -402,6 +444,18 @@ async def delete_movie(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Movie not found in your library",
         )
+
+    images = db.query(UserImage).filter(UserImage.user_movie_id == user_movie.id).all()
+    cleanup_media_references(
+        db,
+        user_id=user_id,
+        references=[
+            reference
+            for image in images
+            for reference in (image.image_url, image.thumbnail_url)
+        ],
+        removed_image_ids=[image.id for image in images],
+    )
 
     db.delete(user_movie)
     db.commit()
@@ -415,43 +469,39 @@ async def delete_movie(
     return BaseResponse(
         success=True,
         message="Movie deleted successfully",
-        data={"user_movie_id": user_movie_id}
+        data={"user_movie_id": user_movie_id},
     )
 
 
 @router.get("/metadata/{source}/{id}", response_model=BaseResponse[MovieMetadata])
 async def get_movie_metadata(
-    source: str = Path(..., pattern="^(kobis|tmdb|tmdb_tv)$", description="Source: 'kobis', 'tmdb', or 'tmdb_tv'"),
-    id: str = Path(..., min_length=1, max_length=100, description="Movie ID (kobis_code or tmdb_id)"),
+    source: str = Path(
+        ...,
+        pattern="^(kobis|tmdb|tmdb_tv|kmdb)$",
+        description="Source: 'kobis', 'tmdb', 'tmdb_tv', or 'kmdb'",
+    ),
+    id: str = Path(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Provider ID (KOBIS code, TMDb ID, or KMDb DOCID)",
+    ),
     user_id: str = Depends(get_current_user),
 ):
     """
     Get detailed movie metadata from external API
 
     Path Parameters:
-    - source: "kobis", "tmdb", or "tmdb_tv"
-    - id: Movie ID (KOBIS code or TMDb ID)
+    - source: "kobis", "tmdb", "tmdb_tv", or "kmdb"
+    - id: Provider ID (KOBIS code, TMDb ID, or KMDb DOCID)
 
     Returns:
     - Detailed movie metadata
     """
-    if source == "tmdb":
-        metadata = await external_api_service.get_tmdb_metadata(parse_external_numeric_id(id, "TMDb"))
-    elif source == "tmdb_tv":
-        metadata = await external_api_service.get_tmdb_tv_metadata(parse_external_numeric_id(id, "TMDb TV"))
-    elif source == "kobis":
-        metadata = await external_api_service.get_kobis_metadata(id)
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid source. Must be 'kobis', 'tmdb', or 'tmdb_tv'"
-        )
-
-    if not metadata:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Movie metadata not found"
-        )
+    external_id = (
+        parse_external_numeric_id(id, "TMDb") if source in ("tmdb", "tmdb_tv") else id
+    )
+    metadata = await fetch_verified_metadata(source, external_id)
 
     return BaseResponse(
         success=True,
@@ -466,47 +516,89 @@ async def merge_movie_metadata(
     user_id: str = Depends(get_current_user),
 ):
     """
-    Merge a search result with available source-specific detail metadata.
+    Fetch verified detail metadata from the search result's selected provider.
 
     Request Body:
-    - search_result: Search result item with available external IDs
+    - search_result: Only source and its matching external ID select the provider record.
+      Client metadata and other provider IDs are never used as fallbacks or aliases.
 
     Returns:
-    - Canonical merged movie metadata for editor/save flow
+    - Read-only provider metadata for preview/save flow; 502 if it cannot be verified.
     """
-    metadata = await external_api_service.build_canonical_metadata_from_search_result(search_result)
+    try:
+        metadata = (
+            await external_api_service.build_canonical_metadata_from_search_result(
+                search_result
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if metadata is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="작품 정보를 출처에서 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        )
 
     return BaseResponse(
         success=True,
-        message="Movie metadata merged successfully",
+        message="Verified movie metadata fetched successfully",
         data=metadata,
     )
 
 
-@router.post("/from-metadata", response_model=BaseResponse[MovieResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/from-metadata",
+    response_model=BaseResponse[MovieResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_movie_from_metadata(
     metadata: MovieMetadata,
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
     """
-    Create a new movie in the database from metadata
+    Import provider-verified metadata, or create a manual record without external IDs.
 
     Request Body:
-    - metadata: MovieMetadata from external API
-      - title → title_ko
-      - original_title → title_original
-      - year → production_year
+    - metadata: With exactly one external ID, all descriptive fields are replaced by
+      server-fetched provider data. content_type selects TMDb movie versus TV IDs.
+    - With no external IDs, descriptive fields are accepted for a manual record.
+    - Multiple external IDs are rejected; they are not evidence of cross-source identity.
 
     Returns:
     - Created movie (returns existing if already in DB)
     """
+    provider_ids = []
+    if metadata.tmdb_id is not None:
+        provider_ids.append(
+            (
+                "tmdb_tv" if metadata.content_type == "series" else "tmdb",
+                metadata.tmdb_id,
+            )
+        )
+    if metadata.kobis_code is not None:
+        provider_ids.append(("kobis", metadata.kobis_code))
+    if metadata.kmdb_id is not None:
+        provider_ids.append(("kmdb", metadata.kmdb_id))
+    if len(provider_ids) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="가져올 작품의 외부 출처 ID는 하나만 지정해 주세요.",
+        )
+    if provider_ids:
+        metadata = await fetch_verified_metadata(*provider_ids[0])
+
     # Check if movie already exists by external IDs (tmdb/kobis/kmdb)
     existing = None
     duplicate_filters = []
 
     if metadata.tmdb_id is not None:
-        duplicate_filters.append(and_(Movie.tmdb_id == metadata.tmdb_id, Movie.movie_type == metadata.content_type))
+        duplicate_filters.append(
+            and_(
+                Movie.tmdb_id == metadata.tmdb_id,
+                Movie.movie_type == metadata.content_type,
+            )
+        )
     if metadata.kobis_code:
         duplicate_filters.append(Movie.kobis_code == metadata.kobis_code)
     if metadata.kmdb_id:
@@ -516,11 +608,7 @@ async def create_movie_from_metadata(
         existing = db.query(Movie).filter(or_(*duplicate_filters)).first()
 
     if existing:
-        return BaseResponse(
-            success=True,
-            message="Movie already exists",
-            data=existing
-        )
+        return BaseResponse(success=True, message="Movie already exists", data=existing)
 
     # Create new movie with field mapping
     # MovieMetadata 필드 → Movie 모델 필드 매핑
@@ -546,8 +634,4 @@ async def create_movie_from_metadata(
     db.commit()
     db.refresh(movie)
 
-    return BaseResponse(
-        success=True,
-        message="Movie created successfully",
-        data=movie
-    )
+    return BaseResponse(success=True, message="Movie created successfully", data=movie)

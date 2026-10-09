@@ -2,6 +2,14 @@
 
 프론트엔드는 CineEntry의 사용자 경험을 직접 보여주는 앱 레이어입니다. 영화 기록을 남기고, 다시 꺼내보고, 취향을 시각적으로 확인하는 흐름을 모바일 중심으로 구성합니다.
 
+## 빌드 전 확인
+
+- Expo SDK 55 / React Native 0.83.10 / React Navigation 7 기준이다.
+- `npm ci`, `npx tsc --noEmit`, `npm test`로 설치·타입·인증/릴리스 설정 회귀를 확인한다.
+- 운영 export와 EAS preview/production에는 자격증명·경로·쿼리가 없는 HTTPS API origin을 `EXPO_PUBLIC_API_URL`로 지정한다. 누락되거나 localhost/HTTP이면 빌드를 거부한다.
+- 로컬 `.env.production`은 Git/EAS 업로드 대상이 아니다. EAS의 해당 environment에 API URL을 별도로 설정하고 로그인·서명 자격을 확인한다.
+- `npx expo export --platform all` 성공은 JS/Hermes 번들 검증이다. 서명 APK/AAB 생성·설치나 스토어 배포 성공을 뜻하지 않는다.
+
 ## 이 앱이 보여주는 경험
 
 - 처음 들어오면 최근 감상 기록과 지금 보고 있는 영화가 먼저 보입니다.
