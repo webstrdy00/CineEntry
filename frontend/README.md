@@ -1,106 +1,147 @@
-# CineEntry Frontend
+# CineEntry 앱 개발
 
-프론트엔드는 CineEntry의 사용자 경험을 직접 보여주는 앱 레이어입니다. 영화 기록을 남기고, 다시 꺼내보고, 취향을 시각적으로 확인하는 흐름을 모바일 중심으로 구성합니다.
+Expo SDK 55 / React Native 0.83.10 / React Navigation 7 기반 클라이언트입니다. 제품 소개와 현재 서비스 상태는 [루트 README](../README.md)를 참고하세요.
 
-## 빌드 전 확인
+[로컬 실행](#로컬-실행) · [기기별 연결](#기기별-api-주소) · [웹 실행](#웹-실행) · [검사](#검사와-번들-생성) · [문제 해결](#문제-해결)
 
-- Expo SDK 55 / React Native 0.83.10 / React Navigation 7 기준이다.
-- `npm ci`, `npx tsc --noEmit`, `npm test`로 설치·타입·인증/릴리스 설정 회귀를 확인한다.
-- 운영 export와 EAS preview/production에는 자격증명·경로·쿼리가 없는 HTTPS API origin을 `EXPO_PUBLIC_API_URL`로 지정한다. 누락되거나 localhost/HTTP이면 빌드를 거부한다.
-- 로컬 `.env.production`은 Git/EAS 업로드 대상이 아니다. EAS의 해당 environment에 API URL을 별도로 설정하고 로그인·서명 자격을 확인한다.
-- `npx expo export --platform all` 성공은 JS/Hermes 번들 검증이다. 서명 APK/AAB 생성·설치나 스토어 배포 성공을 뜻하지 않는다.
+## 로컬 실행
 
-## 이 앱이 보여주는 경험
+### 준비
 
-- 처음 들어오면 최근 감상 기록과 지금 보고 있는 영화가 먼저 보입니다.
-- 영화를 추가할 때는 검색에서 시작해 내 기록으로 자연스럽게 이어집니다.
-- 기록이 쌓일수록 통계와 컬렉션이 개인 취향 아카이브처럼 작동합니다.
-- 프로필에서는 내 기록 습관과 앱 내 정보가 한 번에 정리됩니다.
+- Node.js 24와 npm. 의존성 버전은 `package-lock.json`을 사용합니다.
+- 먼저 실행한 [로컬 API 서버](../backend/README.md#로컬-실행).
+- Android: Android Studio 에뮬레이터 또는 연결한 기기, SDK 55 호환 Expo Go.
+- iOS 시뮬레이터: macOS와 Xcode 필요. Windows에서는 실행할 수 없습니다.
 
-## 화면 구성
-
-### 핵심 탭
-
-- `Home`: 최근 감상 기록, 이어 보는 작품, 컬렉션
-- `Movies`: 내 영화 라이브러리와 검색/필터 흐름
-- `Stats`: 관람 패턴과 취향을 돌아보는 회고
-- `Profile`: 프로필과 앱 정보
-
-### 세부 화면
-
-- `MovieDetail`
-- `MovieSearch`
-- `Collections`
-- `CollectionDetail`
-- `EditProfile`
-- `StreakDetail`
-- `WatchCalendar`
-- `WatchCalendarSettings`
-- `About`
-- `Help`
-- `Terms`
-- `Privacy`
-
-### 진입 흐름
-
-- `Login`
-- `EmailLogin`
-- `SignUp`
-- `ForgotPassword`
-
-## UI 방향
-
-- 모든 텍스트는 한국어 기준으로 작성합니다.
-- 중성 차콜 배경과 부드러운 흰색 텍스트를 기본으로, 골드는 별점과 주요 동작에 제한합니다.
-- 포스터와 실제 감상이 중심인 개인 영화 아카이브를 지향합니다. 장식적인 그라디언트와 반복되는 통계 카드를 피합니다.
-- 여백, 얇은 구분선, 타이포 위계로 섹션을 구분합니다. 포스터는 2:3 비율을 유지합니다.
-- 영화 자체의 정보와 내 관람 기록을 분리합니다. 기록이 없으면 가짜 콘텐츠 대신 명확한 빈 상태를 표시합니다.
-- 웹은 넓은 보관함과 상세 탐색, 모바일은 짧은 기록 흐름에 맞춥니다. 화면 너비 변화에 따라 그리드와 상세 배치를 조정합니다.
-
-## 코드 구조
-
-```text
-frontend/
-├── App.tsx
-└── src/
-    ├── components/   # 공통 UI
-    ├── constants/    # 색상, 상수
-    ├── contexts/     # 앱 전역 상태
-    ├── lib/          # API 클라이언트, 유틸
-    ├── screens/      # 화면 컴포넌트
-    ├── services/     # 서버 통신 레이어
-    └── types/        # 타입 정의
-```
-
-## 개발 시작
-
-### 환경 변수
+저장소 루트에서:
 
 ```bash
 cd frontend
+npm ci
+```
+
+환경 파일 복사:
+
+```bash
+# macOS / Linux / Git Bash
 cp .env.example .env
 ```
 
-```env
-EXPO_PUBLIC_API_URL=http://localhost:8000
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 
-### 실행
+`.env`의 `EXPO_PUBLIC_API_URL`을 기기에서 접근 가능한 API 주소로 바꿉니다. **URL에는 `/api/v1`을 붙이지 않습니다.** 각 서비스가 API 경로를 추가합니다.
+
+```dotenv
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8000
+EXPO_PUBLIC_ENABLE_WEB_APP=false
+```
+
+`EXPO_PUBLIC_` 값은 앱 번들에 포함됩니다. API 주소처럼 공개 가능한 값만 넣고 영화 API 키·OAuth client secret·서버 JWT 키는 절대 넣지 마세요. 로컬 `.env.production`이 남아 있다면 export 시 개발 `.env`와 다른 주소를 사용할 수 있으므로 구분해 관리하세요.
 
 ```bash
-npm install
 npm start
 ```
 
-플랫폼별 실행:
+Metro 터미널에서 `a`로 Android를 열거나, Expo Go로 개발 서버에 접속합니다. 정상 실행 후 로그인/회원가입 화면이 나타나며, API 설정이 맞으면 회원가입과 보관함 조회가 가능합니다. 이메일 재로그인은 [이메일 인증 조건](../backend/README.md#기능별-설정)이 충족되어야 합니다.
+
+## 기기별 API 주소
+
+| 환경 | `EXPO_PUBLIC_API_URL` | 연결 조건 |
+| --- | --- | --- |
+| PC 웹 / iOS 시뮬레이터 | `http://127.0.0.1:8000` | API가 같은 컴퓨터에서 실행 |
+| Android 에뮬레이터 + ADB reverse | `http://127.0.0.1:8000` | 아래 reverse 명령 실행 |
+| 표준 Android Studio 에뮬레이터 | `http://10.0.2.2:8000` | 에뮬레이터가 호스트 API에 접근 |
+| Wi-Fi 실제 기기 | PC의 LAN IP와 포트 8000 | 같은 네트워크, API `--host 0.0.0.0`, 방화벽 허용 |
+
+ADB reverse 방식:
 
 ```bash
-npm run ios
-npm run android
+adb devices -l
+adb reverse tcp:8000 tcp:8000
+```
+
+Metro도 localhost로 접속하는 경우 **실제 Metro 포트**를 전달합니다. 기본 8081이라면 `adb reverse tcp:8081 tcp:8081`입니다. 여러 기기가 있으면 `adb -s <serial> reverse ...`로 대상을 지정하세요. 에뮬레이터 재시작 후에는 reverse 설정을 다시 확인합니다.
+
+주소 변경 후 Metro를 재시작하고 앱을 다시 로드하세요. 실제 기기의 `localhost`는 PC가 아니라 기기 자신입니다. 개발 API·Metro·DB 포트는 인터넷에 공개하지 마세요.
+
+## 웹 실행
+
+기본값은 모바일 OAuth 브릿지 전용입니다. 전체 UI를 로컬 웹에서 확인하려면 두 설정을 모두 바꾸고 서버와 Metro를 재시작합니다.
+
+```dotenv
+# frontend/.env
+EXPO_PUBLIC_ENABLE_WEB_APP=true
+
+# backend/.env
+OAUTH_WEB_CLIENT_ENABLED=True
+FRONTEND_URL=http://localhost:8081
+```
+
+```bash
 npm run web
 ```
 
-## 더 보기
+실제 웹 origin이 다르면 백엔드의 `FRONTEND_URL` 또는 `CORS_ALLOWED_ORIGINS`에도 맞춰야 합니다. 전체 웹 UI를 허용하는 것만으로 OAuth 제공자 설정까지 완료되는 것은 아닙니다.
 
-- 프로젝트 개요: [../README.md](../README.md)
-- 서버 가이드: [../backend/README.md](../backend/README.md)
+## 검사와 번들 생성
+
+모두 `frontend/`에서 실행합니다.
+
+| 명령 | 확인하는 것 |
+| --- | --- |
+| `npx tsc --noEmit` | TypeScript 타입 |
+| `npm test` | refresh 동시 요청·오류 처리, OAuth proof, 릴리스 API URL 규칙 |
+| `npx expo export --platform all` | web JavaScript 및 Android/iOS Hermes 번들 생성 |
+
+export는 운영 모드이므로 [app.config.js](app.config.js)가 **HTTPS API origin**을 요구합니다. 자격증명·경로·쿼리·fragment·localhost가 포함된 주소는 거부합니다. 유효한 운영 주소를 로컬 `.env.production` 또는 실행 환경에 지정하세요.
+
+컴파일 확인만 할 때는 다음처럼 합성 주소를 사용할 수 있습니다. **이 결과물은 동작하는 서비스가 아니므로 배포하지 마세요.**
+
+```bash
+# macOS / Linux / Git Bash
+EXPO_PUBLIC_API_URL=https://api.example.test npx expo export --platform all
+```
+
+```powershell
+# Windows PowerShell
+$env:EXPO_PUBLIC_API_URL = 'https://api.example.test'
+npx expo export --platform all
+Remove-Item Env:EXPO_PUBLIC_API_URL
+```
+
+### EAS 릴리스 준비
+
+[eas.json](eas.json)은 development / preview / production 환경을 구분합니다. 릴리스에는 Expo/EAS 로그인, 기존 앱 서명 자격, 해당 EAS environment의 `EXPO_PUBLIC_API_URL` 설정이 필요합니다. `.env.production`은 Git/EAS 업로드에서 제외되므로 로컬 파일만 작성하고 끝내지 마세요.
+
+현재 운영 이전과 서명 앱 배포는 보류 상태입니다. Expo Go 실행, 번들 생성, 서명 앱 설치, 스토어 배포는 각각 별도 검증입니다.
+
+## 문제 해결
+
+| 증상 | 확인할 항목 |
+| --- | --- |
+| 앱은 열리지만 로그인·목록 조회 실패 | 백엔드 `/health`, API URL, 기기 네트워크 및 ADB reverse |
+| 웹에서 인증 안내만 표시 | 기본 브릿지 정책. 전체 웹 설정 두 곳 확인 |
+| 가입했지만 다시 로그인할 수 없음 | 이메일 인증 여부. log-only 모드는 메일을 보내지 않음 |
+| 외부 작품 등록 실패 | 제공자 상세 조회 오류를 확인. 실패한 검색값을 임의 메타데이터로 저장하지 않음 |
+| 이미지 업로드 실패 | GCS 설정·권한·결제 상태. 상세 조건은 서버 가이드 참고 |
+| export에서 API URL 오류 | 개발용 HTTP 주소가 아닌 HTTPS origin 설정 필요 |
+| Expo Go에서 native module 오류 | Expo SDK 55와 설치된 Expo Go 호환 여부, `npm ci` 후 재실행 |
+
+## 코드 위치
+
+```text
+App.tsx                 내비게이션과 앱 진입
+app.config.js           릴리스 API 설정 검사
+src/screens/            홈·보관함·검색·기록·컬렉션·회고
+src/components/         공통 UI
+src/contexts/           인증 등 전역 상태
+src/lib/api.ts          요청과 세션 갱신
+src/services/           도메인별 API 호출
+src/config/runtime.ts   웹 브릿지 정책
+scripts/test-*.cjs      인증 및 빌드 설정 회귀 테스트
+```
+
+UI 문구는 한국어를 사용합니다. 실제 감상 기록과 포스터가 중심이며, 기록이 없을 때 샘플 데이터를 실제 기록처럼 표시하지 않습니다.
