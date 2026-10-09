@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 from threading import Event
 from time import monotonic, sleep
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -12,12 +12,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, with_loader_criteria
 
 from app.api.v1 import media, movies, users
 from app.database import Base
 from app.models.collection import Collection
 from app.models.collection_movie import CollectionMovie
+from app.models.media_cleanup_job import MediaCleanupJob
 from app.models.movie import Movie
 from app.models.movie_tag import MovieTag
 from app.models.tag import Tag
@@ -142,6 +143,10 @@ def postgres_cleanup_db(monkeypatch):
         yield engine, storage, owner_id, record_id, retained_record_id, image_id, shared
     finally:
         with Session(engine) as db:
+            # Jobs have no user FK; remove only this fixture's UUID-owned work.
+            db.query(MediaCleanupJob).filter(
+                MediaCleanupJob.owner_id == owner_id
+            ).delete(synchronize_session=False)
             owner = db.get(User, owner_id)
             if owner is not None:
                 db.delete(owner)
@@ -204,6 +209,64 @@ def signed_alias(storage, storage_reference):
     )
 
 
+def assert_queued_references(db, owner_id, *references):
+    queued = (
+        db.query(MediaCleanupJob.canonical_reference)
+        .filter(MediaCleanupJob.owner_id == owner_id)
+        .order_by(MediaCleanupJob.canonical_reference)
+        .all()
+    )
+    assert [reference for (reference,) in queued] == sorted(references)
+
+
+def bind_test_cleanup_worker(monkeypatch, engine, owner_id, worker_pid=None):
+    def factory():
+        db = Session(engine, autoflush=False)
+
+        @event.listens_for(db, "do_orm_execute")
+        def scope_job_claims(execute_state):
+            if execute_state.is_select:
+                # Scope only job selection, leaving retained-reference scans and
+                # the real worker's SKIP LOCKED/owner-lock behavior unchanged.
+                execute_state.statement = execute_state.statement.options(
+                    with_loader_criteria(
+                        MediaCleanupJob,
+                        MediaCleanupJob.owner_id == owner_id,
+                        include_aliases=True,
+                    )
+                )
+
+        if worker_pid is not None:
+
+            @event.listens_for(db, "after_begin", once=True)
+            def record_worker_pid(_, _transaction, connection):
+                worker_pid.put(
+                    connection.execute(text("SELECT pg_backend_pid()")).scalar_one()
+                )
+
+        return db
+
+    monkeypatch.setattr(media_cleanup_service, "SessionLocal", factory)
+
+
+def assert_postgres_lock_wait(engine, blocked, pid):
+    deadline = monotonic() + 5
+    while monotonic() < deadline:
+        with engine.connect() as connection:
+            wait_type = connection.execute(
+                text("SELECT wait_event_type FROM pg_stat_activity WHERE pid = :pid"),
+                {"pid": pid},
+            ).scalar_one_or_none()
+        if wait_type == "Lock":
+            assert not blocked.done()
+            return
+        if blocked.done():
+            blocked.result()
+            pytest.fail("Mutation completed without waiting for the owner lock")
+        sleep(0.02)
+    pytest.fail("PostgreSQL owner row-lock wait was not observed")
+
+
 def remove_account(db, user_id):
     return asyncio.run(
         users.delete_current_user(
@@ -237,26 +300,25 @@ def test_image_registration_normalizes_owned_reference_and_keeps_storage(cleanup
     )
     assert saved.thumbnail_url is None
     storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id)
 
 
-def test_image_without_thumbnail_deletes_blob_before_removing_row(cleanup_db):
+def test_image_without_thumbnail_commits_removal_and_queues_owned_blob(cleanup_db):
     db, storage, owner_id, _ = cleanup_db
     record = add_record(db, owner_id)
     image_reference = reference(storage, owner_id, "image.png")
     image = add_image(db, record, image_reference)
     image_id, record_id = image.id, record.id
 
-    def delete(file_reference):
-        assert db.get(UserImage, image_id).image_url == file_reference
-        return True
-
-    storage.delete_file.side_effect = delete
     response = asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
 
     assert response.data == {"deleted_image_id": image_id}
-    storage.delete_file.assert_called_once_with(image_reference)
+    storage.delete_file.assert_not_called()
+    db.rollback()
+    db.expunge_all()
     assert db.get(UserImage, image_id) is None
     assert db.get(UserMovie, record_id) is not None
+    assert_queued_references(db, owner_id, image_reference)
 
 
 @pytest.mark.parametrize("alias_thumbnail", [False, True])
@@ -273,8 +335,9 @@ def test_image_and_thumbnail_references_are_normalized_and_deduplicated(
 
     asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
 
-    storage.delete_file.assert_called_once_with(image_reference)
+    storage.delete_file.assert_not_called()
     assert db.get(UserImage, image_id) is None
+    assert_queued_references(db, owner_id, image_reference)
 
 
 @pytest.mark.parametrize("retained_field", ["image_url", "thumbnail_url"])
@@ -304,6 +367,8 @@ def test_image_removal_preserves_blob_referenced_by_a_retained_image(
     assert getattr(db.get(UserImage, retained_id), retained_field) == signed_alias(
         storage, shared
     )
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
 
 
 @pytest.mark.parametrize("other_owner", [False, True])
@@ -321,11 +386,14 @@ def test_image_removal_preserves_blob_referenced_by_a_retained_avatar(
     asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
 
     storage.delete_file.assert_not_called()
+    assert db.get(UserImage, image_id) is None
     assert db.get(User, retained_owner_id).avatar_url == signed_alias(storage, shared)
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
 
 
 @pytest.mark.parametrize("holder", ["image", "avatar"])
-def test_movie_cascade_cleans_private_images_and_preserves_shared_blobs(
+def test_movie_cascade_queues_private_images_and_preserves_shared_blobs(
     cleanup_db, holder
 ):
     db, storage, owner_id, _ = cleanup_db
@@ -349,7 +417,8 @@ def test_movie_cascade_cleans_private_images_and_preserves_shared_blobs(
     response = asyncio.run(movies.delete_movie(record_id, user_id=owner_id, db=db))
 
     assert response.data == {"user_movie_id": record_id}
-    assert storage.delete_file.call_args_list == [call(private), call(thumbnail)]
+    storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id, private, thumbnail)
     assert db.get(UserMovie, record_id) is None
     assert all(db.get(UserImage, image_id) is None for image_id in image_ids)
     assert db.get(Movie, movie_id) is not None
@@ -393,7 +462,9 @@ def test_account_removal_deduplicates_cascades_and_preserves_retained_references
     response = remove_account(db, owner_id)
 
     assert response.data == {"deleted_user_id": str(owner_id)}
-    storage.delete_file.assert_called_once_with(private)
+    storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id, private)
+    assert_queued_references(db, other_id)
     assert db.get(User, owner_id) is None
     assert db.query(UserMovie).filter(UserMovie.user_id == owner_id).count() == 0
     assert db.query(UserImage).filter(UserImage.user_id == owner_id).count() == 0
@@ -409,7 +480,7 @@ def test_account_removal_deduplicates_cascades_and_preserves_retained_references
         assert db.get(User, other_id).avatar_url == signed_alias(storage, shared)
 
 
-def test_account_removal_cleans_unique_avatar_and_deduplicated_image_blobs(cleanup_db):
+def test_account_removal_keeps_unique_avatar_and_image_cleanup_jobs(cleanup_db):
     db, storage, owner_id, other_id = cleanup_db
     avatar = reference(storage, owner_id, "a-avatar.png")
     image_reference = reference(storage, owner_id, "b-image.png")
@@ -421,11 +492,11 @@ def test_account_removal_cleans_unique_avatar_and_deduplicated_image_blobs(clean
 
     remove_account(db, owner_id)
 
-    assert storage.delete_file.call_args_list == [
-        call(avatar),
-        call(image_reference),
-        call(thumbnail),
-    ]
+    storage.delete_file.assert_not_called()
+    db.rollback()
+    db.expunge_all()
+    assert_queued_references(db, owner_id, avatar, image_reference, thumbnail)
+    assert_queued_references(db, other_id)
     assert db.get(User, owner_id) is None
     assert db.get(User, other_id) is not None
     assert db.query(UserImage).count() == 0
@@ -433,7 +504,7 @@ def test_account_removal_cleans_unique_avatar_and_deduplicated_image_blobs(clean
 
 @pytest.mark.parametrize("operation", ["image", "movie", "account"])
 @pytest.mark.parametrize("failure", ["false", "exception"])
-def test_partial_storage_failure_retains_database_graph_and_allows_retry(
+def test_storage_failure_does_not_block_removal_or_pending_cleanup(
     cleanup_db, operation, failure
 ):
     db, storage, owner_id, other_id = cleanup_db
@@ -449,81 +520,68 @@ def test_partial_storage_failure_retains_database_graph_and_allows_retry(
     other_record = add_record(db, other_id)
     other_image = add_image(db, other_record, reference(storage, other_id, "other.png"))
     other_record_id, other_image_id = other_record.id, other_image.id
-    deleted = set()
-    fail_once = [True]
+    if failure == "exception":
+        storage.delete_file.side_effect = OSError("mock storage unavailable")
+    else:
+        storage.delete_file.return_value = False
 
-    def delete(file_reference):
-        if file_reference == second and fail_once[0]:
-            fail_once[0] = False
-            if failure == "exception":
-                raise OSError("mock storage unavailable")
-            return False
-        # An already-deleted object succeeds on retry, matching the storage contract.
-        deleted.add(file_reference)
-        return True
+    if operation == "image":
+        response = asyncio.run(
+            media.delete_user_image(image_id, user_id=owner_id, db=db)
+        )
+        assert response.data == {"deleted_image_id": image_id}
+    elif operation == "movie":
+        response = asyncio.run(movies.delete_movie(record_id, user_id=owner_id, db=db))
+        assert response.data == {"user_movie_id": record_id}
+    else:
+        response = remove_account(db, owner_id)
+        assert response.data == {"deleted_user_id": str(owner_id)}
 
-    storage.delete_file.side_effect = delete
-
-    def remove():
-        if operation == "image":
-            return asyncio.run(
-                media.delete_user_image(image_id, user_id=owner_id, db=db)
-            )
-        if operation == "movie":
-            return asyncio.run(movies.delete_movie(record_id, user_id=owner_id, db=db))
-        return remove_account(db, owner_id)
-
-    with pytest.raises(HTTPException) as exc_info:
-        remove()
-
-    assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert exc_info.value.headers == {"Retry-After": "30"}
-    assert storage.delete_file.call_args_list == [call(first), call(second)]
-    assert deleted == {first}
+    storage.delete_file.assert_not_called()
+    db.rollback()
     db.expunge_all()
-    assert db.get(User, owner_id).display_name == "기존 이름"
-    assert db.get(UserMovie, record_id).one_line_review == "보존할 감상평"
-    saved_image = db.get(UserImage, image_id)
-    assert (saved_image.image_url, saved_image.thumbnail_url) == (first, second)
-    assert db.query(Tag).count() == 1
-    assert db.query(MovieTag).count() == 1
-    assert db.query(Collection).count() == 1
-    assert db.query(CollectionMovie).count() == 1
-    assert db.get(UserMovie, other_record_id) is not None
-    assert db.get(UserImage, other_image_id) is not None
-
-    remove()
-
-    assert deleted == {first, second}
-    assert storage.delete_file.call_args_list == [
-        call(first),
-        call(second),
-        call(first),
-        call(second),
-    ]
+    assert_queued_references(db, owner_id, first, second)
+    assert_queued_references(db, other_id)
     assert db.get(UserImage, image_id) is None
     assert (db.get(UserMovie, record_id) is None) == (operation != "image")
     assert (db.get(User, owner_id) is None) == (operation == "account")
+    assert db.query(Tag).count() == (0 if operation == "account" else 1)
+    assert db.query(Collection).count() == (0 if operation == "account" else 1)
+    assert db.query(MovieTag).count() == (1 if operation == "image" else 0)
+    assert db.query(CollectionMovie).count() == (1 if operation == "image" else 0)
+    if operation == "image":
+        assert db.get(UserMovie, record_id).one_line_review == "보존할 감상평"
+    if operation != "account":
+        assert db.get(User, owner_id).display_name == "기존 이름"
     assert db.get(User, other_id) is not None
     assert db.get(UserMovie, other_record_id) is not None
     assert db.get(UserImage, other_image_id) is not None
 
 
 @pytest.mark.parametrize("operation", ["image", "movie", "account", "avatar"])
-def test_missing_bucket_configuration_keeps_managed_database_references(
-    cleanup_db, operation
+def test_database_commit_failure_rolls_back_removal_and_cleanup_jobs(
+    cleanup_db, monkeypatch, operation
 ):
-    db, storage, owner_id, _ = cleanup_db
-    owned = reference(storage, owner_id, "image.png")
+    db, storage, owner_id, other_id = cleanup_db
+    owned = reference(storage, owner_id, "orphan.png")
     record = add_record(db, owner_id)
-    image = add_image(db, record, owned)
+    image_reference = (
+        reference(storage, owner_id, "retained.png") if operation == "avatar" else owned
+    )
+    image = add_image(db, record, image_reference)
     record_id, image_id = record.id, image.id
-    if operation == "avatar":
+    add_relations(db, record)
+    if operation in {"avatar", "account"}:
         db.get(User, owner_id).avatar_url = owned
         db.commit()
-    storage.bucket_name = None
 
-    with pytest.raises(HTTPException) as exc_info:
+    def fail_commit():
+        assert_queued_references(db, owner_id, owned)
+        raise RuntimeError("mock database commit failure")
+
+    monkeypatch.setattr(db, "commit", fail_commit)
+
+    with pytest.raises(RuntimeError, match="mock database commit failure"):
         if operation == "image":
             asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
         elif operation == "movie":
@@ -531,24 +589,78 @@ def test_missing_bucket_configuration_keeps_managed_database_references(
         elif operation == "avatar":
             asyncio.run(
                 users.update_current_user(
-                    UserUpdate(avatar_url=None), user_id=owner_id, db=db
+                    UserUpdate(
+                        avatar_url=None, display_name="새 이름", yearly_goal=200
+                    ),
+                    user_id=owner_id,
+                    db=db,
                 )
             )
         else:
             remove_account(db, owner_id)
 
-    assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    storage.delete_file.assert_not_called()
+    db.rollback()
     db.expunge_all()
-    assert db.get(User, owner_id) is not None
-    assert db.get(UserMovie, record_id) is not None
-    assert db.get(UserImage, image_id).image_url == owned
+    storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
+    owner = db.get(User, owner_id)
+    assert (owner.display_name, owner.yearly_goal) == ("기존 이름", 100)
+    if operation in {"avatar", "account"}:
+        assert owner.avatar_url == owned
+    assert db.get(UserMovie, record_id).one_line_review == "보존할 감상평"
+    assert db.get(UserImage, image_id).image_url == image_reference
+    assert db.query(Tag).count() == 1
+    assert db.query(MovieTag).count() == 1
+    assert db.query(Collection).count() == 1
+    assert db.query(CollectionMovie).count() == 1
+    assert db.get(User, other_id) is not None
+
+
+@pytest.mark.parametrize("operation", ["image", "movie", "account", "avatar"])
+def test_missing_bucket_configuration_commits_removal_with_pending_cleanup(
+    cleanup_db, operation
+):
+    db, storage, owner_id, _ = cleanup_db
+    owned = reference(storage, owner_id, "image.png")
+    record = add_record(db, owner_id)
+    image_reference = (
+        reference(storage, owner_id, "retained.png") if operation == "avatar" else owned
+    )
+    image = add_image(db, record, image_reference)
+    record_id, image_id = record.id, image.id
     if operation == "avatar":
-        assert db.get(User, owner_id).avatar_url == owned
+        db.get(User, owner_id).avatar_url = owned
+        db.commit()
+    storage.bucket_name = None
+
+    if operation == "image":
+        asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
+    elif operation == "movie":
+        asyncio.run(movies.delete_movie(record_id, user_id=owner_id, db=db))
+    elif operation == "avatar":
+        asyncio.run(
+            users.update_current_user(
+                UserUpdate(avatar_url=None), user_id=owner_id, db=db
+            )
+        )
+    else:
+        remove_account(db, owner_id)
+
+    storage.delete_file.assert_not_called()
+    db.rollback()
+    db.expunge_all()
+    assert_queued_references(db, owner_id, owned)
+    assert (db.get(User, owner_id) is None) == (operation == "account")
+    assert (db.get(UserMovie, record_id) is None) == (operation in {"movie", "account"})
+    assert (db.get(UserImage, image_id) is None) == (operation != "avatar")
+    if operation == "avatar":
+        assert db.get(User, owner_id).avatar_url is None
+        assert db.get(UserImage, image_id).image_url == image_reference
 
 
 @pytest.mark.parametrize("operation", ["image", "movie", "account"])
-def test_cleanup_never_deletes_another_users_storage_references(cleanup_db, operation):
+def test_cleanup_never_queues_another_users_storage_references(cleanup_db, operation):
     db, storage, owner_id, other_id = cleanup_db
     foreign = reference(storage, other_id, "foreign.png")
     owned = reference(storage, owner_id, "owned-thumbnail.png")
@@ -567,7 +679,12 @@ def test_cleanup_never_deletes_another_users_storage_references(cleanup_db, oper
     else:
         remove_account(db, owner_id)
 
-    storage.delete_file.assert_called_once_with(owned)
+    storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id, owned)
+    assert_queued_references(db, other_id)
+    assert db.get(UserImage, image_id) is None
+    assert (db.get(UserMovie, record_id) is None) == (operation != "image")
+    assert (db.get(User, owner_id) is None) == (operation == "account")
     assert db.get(User, other_id) is not None
     assert db.get(UserImage, other_image_id).image_url == foreign
 
@@ -600,13 +717,52 @@ def test_other_users_movies_and_images_cannot_be_mutated(cleanup_db, operation):
 
     assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
     storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
     assert db.get(UserMovie, record_id).user_id == other_id
     assert db.get(UserImage, image_id).user_id == other_id
 
 
+@pytest.mark.parametrize("field", ["image_url", "thumbnail_url"])
+@pytest.mark.parametrize(
+    "invalid_reference",
+    ["gcs://", "https://external.example.com/image.png", "foreign"],
+)
+def test_invalid_image_registration_preserves_rows_and_queues_no_cleanup(
+    cleanup_db, field, invalid_reference
+):
+    db, storage, owner_id, other_id = cleanup_db
+    record = add_record(db, owner_id)
+    retained = add_image(db, record, reference(storage, owner_id, "retained.png"))
+    retained_id = retained.id
+    if invalid_reference == "foreign":
+        invalid_reference = reference(storage, other_id, "foreign.png")
+    data = {
+        "user_movie_id": record.id,
+        "image_type": "ticket",
+        "image_url": reference(storage, owner_id, "new.png"),
+    }
+    data[field] = invalid_reference
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            media.create_user_image(UserImageCreate(**data), user_id=owner_id, db=db)
+        )
+
+    assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+    storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
+    assert db.query(UserImage).count() == 1
+    assert db.get(UserImage, retained_id).image_url == reference(
+        storage, owner_id, "retained.png"
+    )
+    assert db.get(UserMovie, record.id) is not None
+
+
 @pytest.mark.parametrize("replacement", [None, "new.png"])
 @pytest.mark.parametrize("failure", ["false", "exception"])
-def test_avatar_storage_failure_preserves_all_profile_fields_and_allows_retry(
+def test_avatar_storage_failure_commits_profile_fields_and_pending_cleanup(
     cleanup_db, replacement, failure
 ):
     db, storage, owner_id, _ = cleanup_db
@@ -620,29 +776,21 @@ def test_avatar_storage_failure_preserves_all_profile_fields_and_allows_retry(
     else:
         storage.delete_file.return_value = False
 
-    with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(users.update_current_user(update, user_id=owner_id, db=db))
-
-    assert exc_info.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert exc_info.value.headers == {"Retry-After": "30"}
-    db.expunge_all()
-    saved = db.get(User, owner_id)
-    assert (saved.avatar_url, saved.display_name, saved.yearly_goal) == (
-        old,
-        "기존 이름",
-        100,
-    )
-    storage.delete_file.assert_called_once_with(old)
-
-    storage.delete_file.side_effect = None
-    storage.delete_file.return_value = True
     response = asyncio.run(users.update_current_user(update, user_id=owner_id, db=db))
 
     assert response.data.avatar_url == new
     assert response.data.display_name == "새 이름"
     assert response.data.yearly_goal == 200
-    assert db.get(User, owner_id).avatar_url == new
-    assert storage.delete_file.call_args_list == [call(old), call(old)]
+    storage.delete_file.assert_not_called()
+    db.rollback()
+    db.expunge_all()
+    saved = db.get(User, owner_id)
+    assert (saved.avatar_url, saved.display_name, saved.yearly_goal) == (
+        new,
+        "새 이름",
+        200,
+    )
+    assert_queued_references(db, owner_id, old)
 
 
 @pytest.mark.parametrize("holder", ["image", "thumbnail", "avatar"])
@@ -672,10 +820,12 @@ def test_avatar_replacement_preserves_blob_with_a_retained_reference(
     storage.delete_file.assert_not_called()
     assert response.data.avatar_url == new
     assert db.get(User, owner_id).avatar_url == new
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
 
 
 @pytest.mark.parametrize("include_avatar", [False, True])
-def test_unchanged_avatar_or_unrelated_profile_update_does_not_delete_blob(
+def test_unchanged_avatar_or_unrelated_profile_update_does_not_queue_cleanup(
     cleanup_db, include_avatar
 ):
     db, storage, owner_id, _ = cleanup_db
@@ -693,6 +843,7 @@ def test_unchanged_avatar_or_unrelated_profile_update_does_not_delete_blob(
     storage.delete_file.assert_not_called()
     assert response.data.avatar_url == old
     assert response.data.display_name == "새 이름"
+    assert_queued_references(db, owner_id)
 
 
 @pytest.mark.parametrize("operation", ["avatar", "account"])
@@ -704,7 +855,7 @@ def test_unchanged_avatar_or_unrelated_profile_update_does_not_delete_blob(
         "gcs://cleanup-test-bucket/cineentry/legacy/avatar.jpg",
     ],
 )
-def test_unmanaged_or_not_user_owned_avatars_are_never_deleted(
+def test_unmanaged_or_not_user_owned_avatars_are_never_queued(
     cleanup_db, operation, old_reference
 ):
     db, storage, owner_id, _ = cleanup_db
@@ -724,6 +875,7 @@ def test_unmanaged_or_not_user_owned_avatars_are_never_deleted(
         assert db.get(User, owner_id) is None
 
     storage.delete_file.assert_not_called()
+    assert_queued_references(db, owner_id)
 
 
 def test_foreign_avatar_replacement_is_rejected_before_old_avatar_cleanup(cleanup_db):
@@ -743,28 +895,37 @@ def test_foreign_avatar_replacement_is_rejected_before_old_avatar_cleanup(cleanu
     assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
     storage.delete_file.assert_not_called()
     assert db.get(User, owner_id).avatar_url == old
+    assert_queued_references(db, owner_id)
+    assert_queued_references(db, other_id)
 
 
 @pytest.mark.parametrize("holder", ["image", "avatar"])
 @pytest.mark.parametrize("operation", ["image", "movie"])
-def test_postgres_concurrent_reference_write_commits_before_cleanup_scan(
-    postgres_cleanup_db, holder, operation
+@pytest.mark.parametrize("writer_first", [False, True])
+def test_postgres_owner_lock_serializes_reference_writes_and_cleanup_enqueue(
+    postgres_cleanup_db, holder, operation, writer_first
 ):
     engine, storage, owner_id, record_id, retained_record_id, image_id, shared = (
         postgres_cleanup_db
     )
-    writer_ready = Event()
-    release_writer = Event()
-    deletion_pid = Queue()
+    first_ready = Event()
+    release_first = Event()
+    blocked_pid = Queue()
 
     def write_reference():
         with Session(engine) as db:
+            if writer_first:
 
-            @event.listens_for(db, "before_commit", once=True)
-            def hold_owner_lock(_):
-                writer_ready.set()
-                if not release_writer.wait(timeout=10):
-                    raise TimeoutError("Owner lock was not released by the test")
+                @event.listens_for(db, "before_commit", once=True)
+                def hold_writer_lock(_):
+                    first_ready.set()
+                    if not release_first.wait(timeout=10):
+                        raise TimeoutError("Owner lock was not released by the test")
+
+            else:
+                blocked_pid.put(
+                    db.execute(text("SELECT pg_backend_pid()")).scalar_one()
+                )
 
             if holder == "image":
                 return asyncio.run(
@@ -788,7 +949,19 @@ def test_postgres_concurrent_reference_write_commits_before_cleanup_scan(
 
     def remove():
         with Session(engine) as db:
-            deletion_pid.put(db.execute(text("SELECT pg_backend_pid()")).scalar_one())
+            if writer_first:
+                blocked_pid.put(
+                    db.execute(text("SELECT pg_backend_pid()")).scalar_one()
+                )
+            else:
+
+                @event.listens_for(db, "before_commit", once=True)
+                def hold_cleanup_lock(_):
+                    assert_queued_references(db, owner_id, shared)
+                    first_ready.set()
+                    if not release_first.wait(timeout=10):
+                        raise TimeoutError("Owner lock was not released by the test")
+
             if operation == "image":
                 return asyncio.run(
                     media.delete_user_image(image_id, user_id=owner_id, db=db)
@@ -796,42 +969,170 @@ def test_postgres_concurrent_reference_write_commits_before_cleanup_scan(
             return asyncio.run(movies.delete_movie(record_id, user_id=owner_id, db=db))
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        writer = executor.submit(write_reference)
+        first = executor.submit(write_reference if writer_first else remove)
         try:
-            if not writer_ready.wait(timeout=5):
-                writer.result(timeout=1)
-                pytest.fail("Reference writer did not reach its locked commit")
-            deletion = executor.submit(remove)
-            pid = deletion_pid.get(timeout=5)
-            deadline = monotonic() + 5
-            observed_lock_wait = False
-            while monotonic() < deadline:
-                with engine.connect() as connection:
-                    wait_type = connection.execute(
-                        text(
-                            "SELECT wait_event_type FROM pg_stat_activity WHERE pid = :pid"
-                        ),
-                        {"pid": pid},
-                    ).scalar_one_or_none()
-                if wait_type == "Lock":
-                    observed_lock_wait = True
-                    break
-                if deletion.done():
-                    deletion.result()
-                    break
-                sleep(0.02)
-            assert observed_lock_wait
-            assert not deletion.done()
+            if not first_ready.wait(timeout=5):
+                first.result(timeout=1)
+                pytest.fail("First mutation did not reach its locked commit")
+            blocked = executor.submit(remove if writer_first else write_reference)
+            pid = blocked_pid.get(timeout=5)
+            assert_postgres_lock_wait(engine, blocked, pid)
         finally:
-            release_writer.set()
-        written = writer.result(timeout=10)
-        deletion.result(timeout=10)
+            release_first.set()
+        first_result = first.result(timeout=10)
+        blocked_result = blocked.result(timeout=10)
+        written = first_result if writer_first else blocked_result
 
     storage.delete_file.assert_not_called()
     with Session(engine) as db:
         assert db.get(UserImage, image_id) is None
+        assert (db.get(UserMovie, record_id) is None) == (operation == "movie")
         assert db.get(UserMovie, retained_record_id) is not None
+        # Cleanup-first work stays queued; the worker must recheck the later
+        # reference before deletion. Writer-first cleanup must not enqueue it.
+        assert_queued_references(db, owner_id, *(() if writer_first else (shared,)))
         if holder == "image":
             assert db.get(UserImage, written.data.id).image_url == shared
         else:
             assert db.get(User, owner_id).avatar_url == shared
+
+
+def test_postgres_two_workers_skip_locked_job_and_delete_storage_once(
+    postgres_cleanup_db, monkeypatch
+):
+    engine, storage, owner_id, _, _, image_id, shared = postgres_cleanup_db
+    with Session(engine) as db:
+        asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
+        assert_queued_references(db, owner_id, shared)
+    bind_test_cleanup_worker(monkeypatch, engine, owner_id)
+    deletion_started = Event()
+    release_deletion = Event()
+
+    def hold_storage_delete(file_reference):
+        assert file_reference == shared
+        deletion_started.set()
+        if not release_deletion.wait(timeout=15):
+            raise TimeoutError("Storage deletion was not released by the test")
+        return True
+
+    storage.delete_file.side_effect = hold_storage_delete
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(
+            media_cleanup_service.process_cleanup_jobs, batch_size=1
+        )
+        try:
+            if not deletion_started.wait(timeout=5):
+                first.result(timeout=1)
+                pytest.fail("First worker did not claim the pending cleanup job")
+            second = executor.submit(
+                media_cleanup_service.process_cleanup_jobs, batch_size=1
+            )
+            assert second.result(timeout=5) == 0
+            assert not first.done()
+            storage.delete_file.assert_called_once_with(shared)
+            with Session(engine) as db:
+                assert_queued_references(db, owner_id, shared)
+        finally:
+            release_deletion.set()
+        assert first.result(timeout=10) == 1
+
+    storage.delete_file.assert_called_once_with(shared)
+    with Session(engine) as db:
+        assert_queued_references(db, owner_id)
+        assert db.get(UserImage, image_id) is None
+
+
+def test_postgres_worker_owner_lock_serializes_reference_mutation_and_recheck(
+    postgres_cleanup_db, monkeypatch
+):
+    engine, storage, owner_id, _, retained_record_id, image_id, shared = (
+        postgres_cleanup_db
+    )
+    # First a worker holds User while registration waits. Then removal of that
+    # registered image queues a new job and an avatar writer makes it retained
+    # while the worker waits for User. Both phases use the real worker and routes.
+    for writer_first in (False, True):
+        with Session(engine) as db:
+            asyncio.run(media.delete_user_image(image_id, user_id=owner_id, db=db))
+            assert_queued_references(db, owner_id, shared)
+        worker_pid = Queue()
+        writer_pid = Queue()
+        bind_test_cleanup_worker(monkeypatch, engine, owner_id, worker_pid)
+        first_ready = Event()
+        release_first = Event()
+
+        def hold_storage_delete(file_reference):
+            assert file_reference == shared
+            first_ready.set()
+            if not release_first.wait(timeout=15):
+                raise TimeoutError("Storage deletion was not released by the test")
+            return True
+
+        storage.delete_file.side_effect = hold_storage_delete
+
+        def write_reference():
+            with Session(engine) as db:
+                if writer_first:
+
+                    @event.listens_for(db, "before_commit", once=True)
+                    def hold_writer_lock(_):
+                        first_ready.set()
+                        if not release_first.wait(timeout=15):
+                            raise TimeoutError(
+                                "Owner lock was not released by the test"
+                            )
+
+                    return asyncio.run(
+                        users.update_current_user(
+                            UserUpdate(avatar_url=signed_alias(storage, shared)),
+                            user_id=owner_id,
+                            db=db,
+                        )
+                    )
+
+                writer_pid.put(db.execute(text("SELECT pg_backend_pid()")).scalar_one())
+                return asyncio.run(
+                    media.create_user_image(
+                        UserImageCreate(
+                            user_movie_id=retained_record_id,
+                            image_type="ticket",
+                            image_url=signed_alias(storage, shared),
+                        ),
+                        user_id=owner_id,
+                        db=db,
+                    )
+                )
+
+        def process():
+            return media_cleanup_service.process_cleanup_jobs(batch_size=1)
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(write_reference if writer_first else process)
+            try:
+                if not first_ready.wait(timeout=5):
+                    first.result(timeout=1)
+                    pytest.fail("First operation did not reach its owner-locked pause")
+                blocked = executor.submit(process if writer_first else write_reference)
+                pid = (worker_pid if writer_first else writer_pid).get(timeout=5)
+                assert_postgres_lock_wait(engine, blocked, pid)
+            finally:
+                release_first.set()
+            first_result = first.result(timeout=10)
+            blocked_result = blocked.result(timeout=10)
+            processed = blocked_result if writer_first else first_result
+            written = first_result if writer_first else blocked_result
+
+        assert processed == 1
+        # Only phase one deletes storage. Phase two must cancel the claimed job
+        # after rescanning the avatar committed while it waited for the owner.
+        storage.delete_file.assert_called_once_with(shared)
+        with Session(engine) as db:
+            assert_queued_references(db, owner_id)
+            assert db.get(UserImage, image_id) is None
+            assert db.get(UserMovie, retained_record_id) is not None
+            if writer_first:
+                assert db.get(User, owner_id).avatar_url == shared
+            else:
+                assert db.get(UserImage, written.data.id).image_url == shared
+                image_id = written.data.id

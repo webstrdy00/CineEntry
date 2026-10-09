@@ -242,7 +242,7 @@ class StorageService:
             return False
 
         try:
-            self.bucket.blob(file_key).delete()
+            self.bucket.blob(file_key).delete(timeout=10, retry=None)
             return True
         except NotFound:
             return True

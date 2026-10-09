@@ -7,6 +7,7 @@ from app.models.tag import Tag
 from app.models.movie_tag import MovieTag
 from app.models.collection import Collection
 from app.models.collection_movie import CollectionMovie
+from app.models.media_cleanup_job import MediaCleanupJob
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "MovieTag",
     "Collection",
     "CollectionMovie",
+    "MediaCleanupJob",
 ]

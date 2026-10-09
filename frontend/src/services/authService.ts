@@ -49,12 +49,9 @@ export interface LoginRequest {
 }
 
 export class AuthSessionUnavailableError extends Error {
-  originalError: unknown;
-
-  constructor(originalError: unknown) {
+  constructor() {
     super('인증 상태를 확인할 수 없습니다.');
     this.name = 'AuthSessionUnavailableError';
-    this.originalError = originalError;
     Object.setPrototypeOf(this, AuthSessionUnavailableError.prototype);
   }
 }
@@ -190,7 +187,7 @@ export const refreshTokens = async (): Promise<TokenResponse | null> => {
     if (isRefreshCredentialRejected(error)) {
       return null;
     }
-    throw new AuthSessionUnavailableError(error);
+    throw new AuthSessionUnavailableError();
   }
 };
 
@@ -200,10 +197,10 @@ export const refreshTokens = async (): Promise<TokenResponse | null> => {
 export const logout = async (): Promise<void> => {
   try {
     await api.post(`${AUTH_BASE}/logout`);
-  } catch (error) {
+  } catch {
     // 서버 에러는 무시
     if (__DEV__) {
-      console.log('Logout API error (ignored):', error);
+      console.log('Logout API error (ignored)');
     }
   }
 
@@ -223,7 +220,7 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
     return response.data.data as AuthUser;
   } catch (error) {
     if (!isAuthSessionInvalidError(error)) {
-      throw new AuthSessionUnavailableError(error);
+      throw new AuthSessionUnavailableError();
     }
 
     return null;

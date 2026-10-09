@@ -512,8 +512,7 @@ async def audit(monkeypatch):
                         "Manual metadata unexpectedly invoked an external provider",
                     )
     finally:
-        # Also close after startup/test exceptions: app lifespan itself does not
-        # currently put its shutdown after yield in a try/finally block.
+        # Also close after startup failures before lifespan reaches its yield.
         try:
             await redis_service.disconnect()
         finally:
@@ -602,6 +601,47 @@ async def test_real_auth_verification_refresh_replay_and_logout(audit):
     )
     await audit.login(account)
     await audit.data("GET", "/api/v1/users/me", account)
+
+
+async def test_real_long_review_survives_session_restart_and_rejected_overflow(audit):
+    from app.models.user_movie import UserMovie
+    from app.schemas.movie import REVIEW_MAX_LENGTH
+
+    account = await audit.register()
+    movie_id = await audit.manual_movie(account)
+    record = await audit.add_movie(account, movie_id)
+    path = f"/api/v1/movies/{record['id']}"
+    review = ("긴 감상 기록\n" * REVIEW_MAX_LENGTH)[:REVIEW_MAX_LENGTH]
+    saved = await audit.data(
+        "PUT",
+        path,
+        account,
+        json={"one_line_review": review, "watch_date": "2026-10-07", "rating": 4.5},
+    )
+    _check(saved["review"] == review, "Long Unicode review was truncated")
+    await audit.request(
+        "PUT",
+        path,
+        account,
+        expected=422,
+        json={"one_line_review": review + "끝"},
+    )
+    await audit.request("POST", "/api/v1/auth/logout", account)
+    await audit.request("GET", path, account, expected=401)
+    await audit.login(account)
+    restored = await audit.data("GET", path, account)
+    _check(
+        restored["review"] == review
+        and restored["watch_date"] == "2026-10-07"
+        and restored["rating"] == 4.5,
+        "Reauthentication changed the persisted review/date/rating",
+    )
+    with audit.database.SessionLocal() as db:
+        row = db.get(UserMovie, record["id"])
+        _check(
+            row is not None and row.one_line_review == review,
+            "Fresh DB session did not recover the complete review",
+        )
 
 
 async def test_real_personal_movies_collections_tags_and_stats(audit):

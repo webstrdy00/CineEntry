@@ -7,7 +7,6 @@ import base64
 import hashlib
 import json
 import secrets
-import time
 from html import escape
 from ipaddress import ip_address
 from string import Template
@@ -24,6 +23,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import HTMLResponse
+from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -59,11 +59,9 @@ from app.services.password_policy_service import (
     validate_password_policy,
 )
 from app.services.response_serializers import serialize_auth_user
+from app.services.redis_service import redis_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# OAuth 연결 요청 임시 저장. 단일 인스턴스용이므로 TTL과 상한을 둔다.
-_oauth_states: dict[str, dict[str, str | float | None]] = {}
 
 
 def _normalize_oauth_client(client: str | None) -> str:
@@ -88,31 +86,7 @@ def _build_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _prune_oauth_states(now: float | None = None) -> None:
-    current_time = now if now is not None else time.monotonic()
-    expires_before = current_time - settings.OAUTH_STATE_TTL_SECONDS
-
-    expired_states = [
-        state
-        for state, payload in _oauth_states.items()
-        if float(payload.get("created_at") or 0) <= expires_before
-    ]
-    for state in expired_states:
-        _oauth_states.pop(state, None)
-
-    overflow_count = len(_oauth_states) - settings.OAUTH_STATE_MAX_ENTRIES
-    if overflow_count <= 0:
-        return
-
-    oldest_states = sorted(
-        _oauth_states.items(),
-        key=lambda item: float(item[1].get("created_at") or 0),
-    )[:overflow_count]
-    for state, _ in oldest_states:
-        _oauth_states.pop(state, None)
-
-
-def _store_oauth_state(
+async def _store_oauth_state(
     state: str,
     provider: str,
     client: str,
@@ -120,20 +94,29 @@ def _store_oauth_state(
     transaction_token: str,
     code_verifier: str | None = None,
 ) -> None:
-    _prune_oauth_states()
-    _oauth_states[state] = {
-        "provider": provider,
-        "client": client,
-        "transaction_token_hash": hashlib.sha256(
-            transaction_token.encode("utf-8")
-        ).hexdigest(),
-        "code_verifier": code_verifier,
-        "created_at": time.monotonic(),
-    }
-    _prune_oauth_states()
+    try:
+        stored = await redis_service.store_oauth_state(
+            state,
+            provider,
+            client,
+            hashlib.sha256(transaction_token.encode("utf-8")).hexdigest(),
+            settings.OAUTH_STATE_TTL_SECONDS,
+            settings.OAUTH_STATE_MAX_ENTRIES,
+            code_verifier,
+        )
+    except (RedisError, OSError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth 연결을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        ) from None
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth 연결을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        )
 
 
-def _consume_oauth_state(
+async def _consume_oauth_state(
     state: str | None,
     provider: str,
     transaction_token: str | None,
@@ -143,9 +126,9 @@ def _consume_oauth_state(
 
     - state 및 시작 기기의 transaction token 누락 차단
     - provider 불일치 차단 (google state를 kakao에 재사용 방지)
-    - 유효기간과 transaction token hash 검증 후에만 소비
+    - Redis TTL과 transaction token hash 검증 후에만 원자적으로 소비
     - web/mobile redirect 대상 불일치 방지
-    - 재사용 차단(pop)
+    - 재사용 및 여러 프로세스의 동시 소비 차단
     """
     if not state:
         raise HTTPException(
@@ -158,30 +141,24 @@ def _consume_oauth_state(
             detail="OAuth 연결 확인 정보가 필요합니다.",
         )
 
-    _prune_oauth_states()
-    saved_state = _oauth_states.get(state)
+    try:
+        saved_state = await redis_service.consume_oauth_state(
+            state,
+            provider,
+            hashlib.sha256(transaction_token.encode("utf-8")).hexdigest(),
+        )
+    except (RedisError, OSError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth 연결을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+        ) from None
     if not saved_state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="유효하지 않은 state입니다.",
         )
 
-    saved_provider = saved_state["provider"]
-    saved_client = saved_state["client"]
-    transaction_token_hash = hashlib.sha256(
-        transaction_token.encode("utf-8")
-    ).hexdigest()
-    if saved_provider != provider or not secrets.compare_digest(
-        saved_state.get("transaction_token_hash") or "",
-        transaction_token_hash,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="유효하지 않은 state입니다.",
-        )
-
-    _oauth_states.pop(state)
-    return saved_client, saved_state.get("code_verifier")
+    return saved_state["client"], saved_state.get("code_verifier")
 
 
 def _provider_label(provider: str) -> str:
@@ -2109,7 +2086,7 @@ async def google_auth_start(client: str = Query("web")):
     state = secrets.token_urlsafe(32)
     transaction_token = secrets.token_urlsafe(32)
     code_verifier, code_challenge = _build_pkce_pair()
-    _store_oauth_state(
+    await _store_oauth_state(
         state,
         "google",
         oauth_client,
@@ -2165,7 +2142,7 @@ async def google_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    oauth_client, code_verifier = _consume_oauth_state(
+    oauth_client, code_verifier = await _consume_oauth_state(
         request.state, "google", request.transaction_token
     )
     if not code_verifier:
@@ -2279,7 +2256,7 @@ async def kakao_auth_start(client: str = Query("web")):
     oauth_client = _normalize_oauth_client(client)
     state = secrets.token_urlsafe(32)
     transaction_token = secrets.token_urlsafe(32)
-    _store_oauth_state(
+    await _store_oauth_state(
         state, "kakao", oauth_client, transaction_token=transaction_token
     )
     redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)
@@ -2326,7 +2303,7 @@ async def kakao_auth_callback(
     request: OAuthCallbackRequest,
     db: Session = Depends(get_db),
 ):
-    oauth_client, _ = _consume_oauth_state(
+    oauth_client, _ = await _consume_oauth_state(
         request.state, "kakao", request.transaction_token
     )
     redirect_uri = _get_oauth_redirect_uri("kakao", oauth_client)

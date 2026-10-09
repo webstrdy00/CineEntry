@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # Database (Independent PostgreSQL)
     DATABASE_URL: str
 
-    # Redis (for caching)
+    # Redis (caching and one-time authentication transactions)
     REDIS_URL: str = "redis://localhost:6379"
 
     # JWT Settings (자체 인증)
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     AUTH_REGISTER_ATTEMPT_LIMIT: int = 5
     AUTH_REGISTER_ATTEMPT_WINDOW_SECONDS: int = 3600
     OAUTH_STATE_TTL_SECONDS: int = 600
-    OAUTH_STATE_MAX_ENTRIES: int = 1000
+    OAUTH_STATE_MAX_ENTRIES: int = 1000  # Redis 전체 미완료 OAuth 트랜잭션 상한
     OAUTH_WEB_CLIENT_ENABLED: bool = False
 
     # OAuth - Google

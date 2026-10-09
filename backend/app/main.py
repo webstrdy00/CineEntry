@@ -1,8 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import asyncio
+import logging
 from app.config import settings
 from app.services.redis_service import redis_service
+from app.services.media_cleanup_service import process_cleanup_jobs
+
+
+async def _run_media_cleanup(stop: asyncio.Event):
+    while not stop.is_set():
+        try:
+            processed = await asyncio.to_thread(process_cleanup_jobs, batch_size=1)
+        except Exception:
+            logging.getLogger(__name__).warning("미디어 정리 작업을 재시도합니다.")
+            processed = 0
+        if processed:
+            continue
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=5)
+        except TimeoutError:
+            pass
 
 
 @asynccontextmanager
@@ -13,11 +31,15 @@ async def lifespan(app: FastAPI):
     # Startup
     settings.validate_production()
     await redis_service.connect()
-    print("✅ Redis connected")
-    yield
-    # Shutdown
-    await redis_service.disconnect()
-    print("✅ Redis disconnected")
+    stop = asyncio.Event()
+    cleanup_task = asyncio.create_task(_run_media_cleanup(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        # Do not cancel an in-flight thread holding database locks.
+        await cleanup_task
+        await redis_service.disconnect()
 
 
 app = FastAPI(

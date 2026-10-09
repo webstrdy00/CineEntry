@@ -1,7 +1,7 @@
 """
-Redis 캐싱 서비스
-JWKS, 외부 API 응답 캐싱
+Redis 캐싱 및 OAuth 트랜잭션 서비스
 """
+
 import json
 from typing import Optional
 import redis.asyncio as redis
@@ -9,27 +9,140 @@ from app.config import settings
 
 
 class RedisService:
-    """Redis 캐싱 서비스"""
+    """Redis 캐싱 및 서버 TTL 기반 1회성 OAuth 트랜잭션"""
+
+    OAUTH_STATE_PREFIX = "auth:oauth:state"
+    OAUTH_STATE_INDEX_KEY = "auth:oauth:states"
+    _STORE_OAUTH_STATE_SCRIPT = """
+local clock = redis.call('TIME')
+local now = tonumber(clock[1]) * 1000 + math.floor(tonumber(clock[2]) / 1000)
+local ttl = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', now)
+if redis.call('ZCARD', KEYS[2]) >= limit then
+    return 0
+end
+if not redis.call('SET', KEYS[1], ARGV[1], 'EX', ttl, 'NX') then
+    return 0
+end
+redis.call('ZADD', KEYS[2], now + ttl * 1000, KEYS[1])
+local latest = redis.call('ZREVRANGE', KEYS[2], 0, 0, 'WITHSCORES')
+redis.call('PEXPIREAT', KEYS[2], tonumber(latest[2]))
+return 1
+"""
+    _CONSUME_OAUTH_STATE_SCRIPT = """
+local value = redis.call('GET', KEYS[1])
+if not value then
+    redis.call('ZREM', KEYS[2], KEYS[1])
+    return nil
+end
+if redis.call('PTTL', KEYS[1]) < 0 then
+    return nil
+end
+local decoded, payload = pcall(cjson.decode, value)
+if not decoded or type(payload) ~= 'table' then
+    return nil
+end
+if payload.provider ~= ARGV[1] or payload.transaction_token_hash ~= ARGV[2] then
+    return nil
+end
+if payload.client ~= 'web' and payload.client ~= 'mobile' then
+    return nil
+end
+if payload.code_verifier ~= nil and payload.code_verifier ~= cjson.null
+    and type(payload.code_verifier) ~= 'string' then
+    return nil
+end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[2], KEYS[1])
+return value
+"""
 
     def __init__(self):
         self.redis_client: Optional[redis.Redis] = None
 
     async def connect(self):
         """Redis 연결"""
-        if not self.redis_client:
-            # redis.from_url()은 동기 함수 - await 제거
-            self.redis_client = redis.from_url(
-                settings.REDIS_URL,
-                encoding="utf-8",
-                decode_responses=True
-            )
-            # 연결 테스트
-            await self.redis_client.ping()
+        if self.redis_client is not None:
+            return
+        client = redis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+        )
+        try:
+            await client.ping()
+        except BaseException:
+            await client.aclose()
+            raise
+        if self.redis_client is None:
+            self.redis_client = client
+        else:
+            # 동시 연결에서 이미 성공한 클라이언트만 소유한다.
+            await client.aclose()
 
     async def disconnect(self):
         """Redis 연결 종료"""
-        if self.redis_client:
-            await self.redis_client.close()
+        client = self.redis_client
+        self.redis_client = None
+        if client:
+            await client.aclose()
+
+    def _oauth_state_key(self, state: str) -> str:
+        return f"{self.OAUTH_STATE_PREFIX}:{state}"
+
+    async def store_oauth_state(
+        self,
+        state: str,
+        provider: str,
+        client: str,
+        transaction_token_hash: str,
+        ttl_seconds: int,
+        max_entries: int,
+        code_verifier: str | None = None,
+    ) -> bool:
+        """발급/상한 검사를 원자적으로 수행하며 유효한 기존 state를 퇴출하지 않는다."""
+        if ttl_seconds <= 0 or max_entries <= 0:
+            raise ValueError("OAuth transaction limits must be positive")
+        if not self.redis_client:
+            await self.connect()
+        payload = json.dumps(
+            {
+                "provider": provider,
+                "client": client,
+                "transaction_token_hash": transaction_token_hash,
+                "code_verifier": code_verifier,
+            },
+            ensure_ascii=False,
+        )
+        result = await self.redis_client.eval(
+            self._STORE_OAUTH_STATE_SCRIPT,
+            2,
+            self._oauth_state_key(state),
+            self.OAUTH_STATE_INDEX_KEY,
+            payload,
+            ttl_seconds,
+            max_entries,
+        )
+        return result == 1
+
+    async def consume_oauth_state(
+        self, state: str, provider: str, transaction_token_hash: str
+    ) -> Optional[dict]:
+        """provider/proof hash 일치 때만 삭제하며 동시 소비는 하나만 성공한다."""
+        if not self.redis_client:
+            await self.connect()
+        value = await self.redis_client.eval(
+            self._CONSUME_OAUTH_STATE_SCRIPT,
+            2,
+            self._oauth_state_key(state),
+            self.OAUTH_STATE_INDEX_KEY,
+            provider,
+            transaction_token_hash,
+        )
+        return json.loads(value) if value else None
 
     async def get(self, key: str) -> Optional[str]:
         """

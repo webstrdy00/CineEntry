@@ -6,9 +6,13 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:15
@@ -44,6 +48,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -68,13 +74,22 @@ jobs:
           pytest tests/test_backend_integration.py
           pytest tests/test_media_cleanup.py -k postgres
 
+      - name: Verify Redis OAuth atomic transactions
+        env:
+          CINEENTRY_OAUTH_REDIS_TESTS: "1"
+          CINEENTRY_OAUTH_REDIS_URL: redis://127.0.0.1:16389/15
+        run: pytest tests/test_oauth_redis.py
+
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -94,6 +109,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [test, frontend]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Require verified SSH host identity
         env:

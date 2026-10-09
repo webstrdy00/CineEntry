@@ -8,6 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { test } = require('node:test');
+const { inspect } = require('node:util');
 const axios = require('axios');
 const ts = require('typescript');
 
@@ -84,11 +85,11 @@ function browserStorage() {
   };
 }
 
-function createRuntime({ platform = 'ios', fullWeb = false, hooks = {}, dev = false } = {}) {
-  const nativeValues = new Map();
+function createRuntime({ platform = 'ios', fullWeb = false, hooks = {}, dev = false, storage } = {}) {
+  const nativeValues = storage?.nativeValues ?? new Map();
   const nativeOperations = [];
-  const localStorage = browserStorage();
-  const sessionStorage = browserStorage();
+  const localStorage = storage?.localStorage ?? browserStorage();
+  const sessionStorage = storage?.sessionStorage ?? browserStorage();
   const requests = [];
   const logs = [];
   const clock = { now: 1700000000000 };
@@ -208,6 +209,7 @@ function createRuntime({ platform = 'ios', fullWeb = false, hooks = {}, dev = fa
   return {
     lib, api: lib.default, auth, nativeValues, nativeOperations,
     localStorage, sessionStorage, credentialValues, requests, logs, clock, state,
+    storage: { nativeValues, localStorage, sessionStorage },
     setHandler(value) { handler = value; },
     seedTokens(tokens = oldTokens) {
       credentialValues.set(ACCESS_KEY, tokens.access_token);
@@ -223,7 +225,22 @@ function assertStoredTokens(runtime, tokens) {
   assert.equal(runtime.credentialValues.get(REFRESH_KEY), tokens.refresh_token);
 }
 
+function assertSafeErrorOutput(runtime, error, secrets) {
+  for (const field of ['originalError', 'config', 'response', 'cause']) {
+    assert.equal(field in error, false);
+  }
+  const output = [
+    String(error), error.stack, JSON.stringify(error), inspect(error),
+    JSON.stringify(runtime.logs), inspect(runtime.logs),
+  ].join('\n');
+  for (const secret of secrets) {
+    assert.equal(output.includes(secret), false, 'Error output must not contain sensitive fixture data');
+  }
+}
+
 async function concurrentRefresh(runtime, finishRefresh) {
+  const refreshCount = runtime.refreshRequests().length;
+  const protectedCount = runtime.requests.filter((request) => !isRefresh(request)).length;
   const jobs = [
     runtime.auth.refreshTokens(),
     runtime.auth.refreshTokens(),
@@ -235,10 +252,38 @@ async function concurrentRefresh(runtime, finishRefresh) {
   // Attach rejection handlers before releasing any failing response.
   const settled = Promise.allSettled(jobs);
   await nextTurn();
-  assert.equal(runtime.refreshRequests().length, 1);
-  assert.equal(runtime.requests.filter((request) => !isRefresh(request)).length, 3);
+  assert.equal(runtime.refreshRequests().length, refreshCount + 1);
+  assert.equal(runtime.requests.filter((request) => !isRefresh(request)).length, protectedCount + 3);
   finishRefresh.resolve();
   return settled;
+}
+
+async function assertConcurrentRecovery(runtime) {
+  const finishRefresh = deferred();
+  const refreshCount = runtime.refreshRequests().length;
+  const protectedCount = runtime.requests.filter((request) => !isRefresh(request)).length;
+  runtime.setHandler(async (config) => {
+    if (isRefresh(config)) {
+      assert.deepEqual(bodyOf(config), { refresh_token: oldTokens.refresh_token });
+      await finishRefresh.promise;
+      return reply(200, envelope(newTokens));
+    }
+    if (config.headers.get('Authorization') === `Bearer ${oldTokens.access_token}`) {
+      return reply(401, { detail: 'Synthetic expired access token' });
+    }
+    assert.equal(config.headers.get('Authorization'), `Bearer ${newTokens.access_token}`);
+    assert.equal(config._retry, true);
+    assertStoredTokens(runtime, newTokens);
+    return reply(200, envelope(loginResponse.user));
+  });
+  const outcomes = await concurrentRefresh(runtime, finishRefresh);
+  assert.ok(outcomes.every((outcome) => outcome.status === 'fulfilled'));
+  for (const index of [0, 1, 2]) assert.deepEqual(outcomes[index].value, newTokens);
+  for (const index of [3, 4]) assert.deepEqual(outcomes[index].value.data, envelope(loginResponse.user));
+  assert.deepEqual(outcomes[5].value, loginResponse.user);
+  assert.equal(runtime.refreshRequests().length, refreshCount + 1);
+  assert.equal(runtime.requests.filter((request) => !isRefresh(request)).length, protectedCount + 6);
+  assertStoredTokens(runtime, newTokens);
 }
 
 test('raw refresh has a finite independent timeout and stores validated tokens', TEST_OPTIONS, async () => {
@@ -292,7 +337,7 @@ const transientCases = [
   ['malformed HTTP 200', () => reply(200, envelope({ ...newTokens, refresh_token: '' }))],
 ];
 for (const [name, fail] of transientCases) {
-  test(`${name}: all waiters settle, credentials survive, and later refresh works`, TEST_OPTIONS, async () => {
+  test(`${name}: failed concurrent wave settles and reconnect refreshes once for a healthy concurrent wave`, TEST_OPTIONS, async () => {
     const runtime = createRuntime();
     const finishRefresh = deferred();
     runtime.seedTokens();
@@ -311,10 +356,16 @@ for (const [name, fail] of transientCases) {
     assertStoredTokens(runtime, oldTokens);
     assert.equal(runtime.state.unauthorized, 0);
     assert.equal(runtime.nativeOperations.filter(([operation]) => operation === 'delete').length, 0);
-    runtime.setHandler(async () => reply(200, envelope(newTokens)));
-    assert.deepEqual(await runtime.auth.refreshTokens(), newTokens);
+    await assertConcurrentRecovery(runtime);
     assert.equal(runtime.refreshRequests().length, 2);
-    assertStoredTokens(runtime, newTokens);
+    assert.equal(runtime.state.unauthorized, 0);
+    runtime.setHandler(async (config) => {
+      assert.equal(isRefresh(config), false);
+      assert.equal(config.headers.get('Authorization'), `Bearer ${newTokens.access_token}`);
+      return reply(200, envelope(loginResponse.user));
+    });
+    assert.deepEqual(await runtime.auth.getCurrentUser(), loginResponse.user);
+    assert.equal(runtime.refreshRequests().length, 2);
   });
 }
 
@@ -337,6 +388,15 @@ test('definitive refresh HTTP 401 clears credentials and settles every caller', 
   }
   assert.equal(runtime.credentialValues.has(ACCESS_KEY), false);
   assert.equal(runtime.credentialValues.has(REFRESH_KEY), false);
+  assert.equal(runtime.state.unauthorized, 1);
+  const restarted = createRuntime({ storage: runtime.storage });
+  assert.equal(await restarted.auth.getAccessToken(), null);
+  assert.equal(await restarted.auth.getRefreshToken(), null);
+  assert.equal(await restarted.auth.refreshTokens(), null);
+  assert.equal(restarted.requests.length, 0);
+  await runtime.auth.saveTokens(oldTokens);
+  await assertConcurrentRecovery(runtime);
+  assert.equal(runtime.refreshRequests().length, 2);
   assert.equal(runtime.state.unauthorized, 1);
 });
 
@@ -402,18 +462,146 @@ test('unauthorized callback failure still settles the queue and resets refresh s
   assert.equal(runtime.refreshRequests().length, 2);
 });
 
-test('full web refresh preserves localStorage on 503 and clears it only on credential 401', TEST_OPTIONS, async () => {
+test('full web session survives 503, recovers concurrently, then expires only on confirmed credential 401', TEST_OPTIONS, async () => {
   const runtime = createRuntime({ platform: 'web', fullWeb: true });
   runtime.seedTokens();
   runtime.setHandler(async () => reply(503, { detail: 'Synthetic unavailable' }));
   await assert.rejects(runtime.auth.refreshTokens(), runtime.auth.isAuthSessionUnavailableError);
+  await assert.rejects(runtime.auth.getCurrentUser(), runtime.auth.isAuthSessionUnavailableError);
   assertStoredTokens(runtime, oldTokens);
+  assert.equal(runtime.refreshRequests().length, 1);
+  assert.equal(runtime.localStorage.operations.filter(([operation]) => operation === 'delete').length, 0);
   assert.equal(runtime.state.unauthorized, 0);
+  await assertConcurrentRecovery(runtime);
+  assert.equal(runtime.refreshRequests().length, 2);
   runtime.setHandler(async () => reply(401, { detail: 'Synthetic rejected credential' }));
-  assert.equal(await runtime.auth.refreshTokens(), null);
+  assert.equal(await runtime.auth.getCurrentUser(), null);
+  assert.equal(runtime.refreshRequests().length, 3);
   assert.equal(runtime.localStorage.values.size, 0);
   assert.equal(runtime.nativeOperations.length, 0);
   assert.equal(runtime.state.unauthorized, 1);
+  const restarted = createRuntime({ platform: 'web', fullWeb: true, storage: runtime.storage });
+  assert.equal(await restarted.auth.getAccessToken(), null);
+  assert.equal(await restarted.auth.getRefreshToken(), null);
+  assert.equal(await restarted.auth.refreshTokens(), null);
+  assert.equal(restarted.requests.length, 0);
+  assert.equal(runtime.localStorage.values.size, 0);
+});
+
+test('full web offline session lookup preserves tokens and reconnect settles a healthy concurrent wave', TEST_OPTIONS, async () => {
+  const runtime = createRuntime({ platform: 'web', fullWeb: true });
+  await runtime.auth.saveTokens(oldTokens);
+  runtime.setHandler(async (config) => {
+    if (isRefresh(config)) {
+      throw new axios.AxiosError('Synthetic offline', axios.AxiosError.ERR_NETWORK, config);
+    }
+    return reply(401, { detail: 'Synthetic expired access token' });
+  });
+  await assert.rejects(runtime.auth.getCurrentUser(), runtime.auth.isAuthSessionUnavailableError);
+  assertStoredTokens(runtime, oldTokens);
+  assert.equal(runtime.refreshRequests().length, 1);
+  assert.equal(runtime.state.unauthorized, 0);
+  assert.equal(runtime.localStorage.operations.filter(([operation]) => operation === 'delete').length, 0);
+  await assertConcurrentRecovery(runtime);
+  assert.equal(runtime.refreshRequests().length, 2);
+  assert.equal(runtime.state.unauthorized, 0);
+  assert.equal(runtime.nativeOperations.length, 0);
+});
+
+for (const platform of ['ios', 'web']) {
+  test(`${platform}: fresh VM reads persisted credentials and recovers independently of an abandoned refresh flight`, TEST_OPTIONS, async () => {
+    const previous = createRuntime({ platform, fullWeb: true });
+    await previous.auth.saveTokens(oldTokens);
+    const refreshStarted = deferred();
+    const finishAbandonedRefresh = deferred();
+    previous.setHandler(async (config) => {
+      if (isRefresh(config)) {
+        refreshStarted.resolve();
+        await finishAbandonedRefresh.promise;
+        return reply(503, { detail: 'Synthetic abandoned offline session' });
+      }
+      return reply(401, { detail: 'Synthetic expired access token' });
+    });
+    const abandoned = Promise.allSettled([previous.auth.getCurrentUser()]);
+    await refreshStarted.promise;
+    const restarted = createRuntime({ platform, fullWeb: true, storage: previous.storage });
+    try {
+      assert.notEqual(restarted.auth, previous.auth);
+      assert.notEqual(restarted.lib, previous.lib);
+      assert.notEqual(restarted.api, previous.api);
+      const readStart = platform === 'web' ? restarted.localStorage.operations.length : 0;
+      assert.equal(await restarted.auth.getAccessToken(), oldTokens.access_token);
+      assert.equal(await restarted.auth.getRefreshToken(), oldTokens.refresh_token);
+      const reads = platform === 'web'
+        ? restarted.localStorage.operations.slice(readStart)
+        : restarted.nativeOperations;
+      for (const key of [ACCESS_KEY, REFRESH_KEY]) {
+        assert.ok(reads.some(([operation, storedKey]) => operation === 'get' && storedKey === key));
+      }
+      await assertConcurrentRecovery(restarted);
+      assert.equal(restarted.refreshRequests().length, 1);
+      assert.equal(previous.refreshRequests().length, 1);
+      assert.equal(restarted.state.unauthorized, 0);
+      assert.equal(restarted.nativeOperations.length === 0, platform === 'web');
+    } finally {
+      finishAbandonedRefresh.resolve();
+      await abandoned;
+    }
+    const [outcome] = await abandoned;
+    assert.equal(outcome.status, 'rejected');
+    assert.ok(previous.auth.isAuthSessionUnavailableError(outcome.reason));
+    assertStoredTokens(restarted, newTokens);
+    assertStoredTokens(previous, newTokens);
+    assert.equal(previous.state.unauthorized, 0);
+  });
+}
+
+for (const operation of ['refreshTokens', 'getCurrentUser']) {
+  for (const failure of ['network', 'HTTP 503']) {
+    test(`${operation}/${failure}: safe error serialization and inspection expose no Axios body or tokens`, TEST_OPTIONS, async () => {
+      const runtime = createRuntime({ dev: true });
+      const sensitiveBody = 'fixture-private-auth-response-body';
+      runtime.seedTokens();
+      runtime.setHandler(async (config) => {
+        if (failure === 'network') {
+          throw new axios.AxiosError(sensitiveBody, axios.AxiosError.ERR_NETWORK, config);
+        }
+        return reply(503, { detail: sensitiveBody, tokens: newTokens });
+      });
+      await assert.rejects(runtime.auth[operation](), (error) => {
+        assert.ok(runtime.auth.isAuthSessionUnavailableError(error));
+        assertSafeErrorOutput(runtime, error, [
+          sensitiveBody, oldTokens.access_token, oldTokens.refresh_token,
+          newTokens.access_token, newTokens.refresh_token,
+        ]);
+        return true;
+      });
+      assertStoredTokens(runtime, oldTokens);
+      assert.equal(runtime.state.unauthorized, 0);
+    });
+  }
+}
+
+test('logout clears credentials after failure without logging request tokens or response body', TEST_OPTIONS, async () => {
+  const runtime = createRuntime({ dev: true });
+  const sensitiveBody = 'fixture-private-logout-response-body';
+  runtime.seedTokens();
+  runtime.setHandler(async (config) => {
+    assert.equal(config.url, `${AUTH_BASE}/logout`);
+    assert.equal(config.headers.get('Authorization'), `Bearer ${oldTokens.access_token}`);
+    return reply(503, { detail: sensitiveBody, tokens: newTokens });
+  });
+  await runtime.auth.logout();
+  assert.equal(runtime.credentialValues.has(ACCESS_KEY), false);
+  assert.equal(runtime.credentialValues.has(REFRESH_KEY), false);
+  const output = `${JSON.stringify(runtime.logs)}\n${inspect(runtime.logs)}`;
+  for (const secret of [
+    sensitiveBody, oldTokens.access_token, oldTokens.refresh_token,
+    newTokens.access_token, newTokens.refresh_token,
+  ]) {
+    assert.equal(output.includes(secret), false, 'Logout logs must not contain sensitive fixture data');
+  }
+  assert.ok(runtime.logs.some(([, message]) => message === 'Logout API error (ignored)'));
 });
 
 test('late old-token 401 reuses stored new token without a second refresh', TEST_OPTIONS, async () => {
@@ -504,6 +692,55 @@ for (const platform of ['ios', 'web']) {
       assert.ok(runtime.requests.every((request) => !request.url.includes(result.transaction_token)));
       assert.ok(!JSON.stringify(runtime.logs).includes(result.transaction_token));
     });
+
+    test(`${platform}/${provider}: fresh VM reads and consumes persisted OAuth proof without restarting authorization`, TEST_OPTIONS, async () => {
+      const previous = createRuntime({ platform, fullWeb: true });
+      const result = oauthStart(provider, 'restart');
+      const key = pendingKey(provider);
+      await previous.auth.saveTokens(oldTokens);
+      previous.setHandler(async (config) => {
+        assert.equal(config.url, `${AUTH_BASE}/${provider}`);
+        return reply(200, envelope(result));
+      });
+      await oauthMethods(previous, provider).start(platform === 'web' ? 'web' : 'mobile');
+      const pending = previous.pendingValues.get(key);
+      const restarted = createRuntime({ platform, fullWeb: true, storage: previous.storage });
+      restarted.clock.now = previous.clock.now + 1000;
+      assert.notEqual(restarted.auth, previous.auth);
+      assert.equal(restarted.pendingValues.get(key), pending);
+      assertStoredTokens(restarted, oldTokens);
+      restarted.setHandler(async (config) => {
+        assert.equal(config.method, 'post');
+        assert.equal(config.url, `${AUTH_BASE}/${provider}/callback`);
+        assert.equal(config.headers.get('Authorization'), `Bearer ${oldTokens.access_token}`);
+        assert.deepEqual(bodyOf(config), {
+          code: 'fixture-restart-code', state: result.state, transaction_token: result.transaction_token,
+        });
+        assert.equal(restarted.pendingValues.has(key), false);
+        return reply(200, envelope(loginResponse));
+      });
+      assert.deepEqual(
+        await oauthMethods(restarted, provider).callback('fixture-restart-code', result.state),
+        loginResponse
+      );
+      const operations = platform === 'web'
+        ? restarted.sessionStorage.operations
+        : restarted.nativeOperations;
+      const readIndex = operations.findIndex(([operation, storedKey]) => operation === 'get' && storedKey === key);
+      const deleteIndex = operations.findIndex(([operation, storedKey]) => operation === 'delete' && storedKey === key);
+      assert.ok(readIndex >= 0);
+      assert.ok(deleteIndex > readIndex);
+      assert.equal(restarted.requests.length, 1);
+      assert.equal(previous.requests.length, 1);
+      assertStoredTokens(restarted, newTokens);
+      assertStoredTokens(previous, newTokens);
+      await assert.rejects(oauthMethods(restarted, provider).callback('fixture-restart-code', result.state));
+      await assert.rejects(oauthMethods(previous, provider).callback('fixture-restart-code', result.state));
+      assert.equal(restarted.requests.length, 1);
+      assert.equal(previous.requests.length, 1);
+      assert.equal(previous.pendingValues.has(key), false);
+      assert.equal(restarted.state.unauthorized, 0);
+    });
   }
 }
 
@@ -568,9 +805,10 @@ test('callback transport failure consumes proof, preserves credentials, and expo
   });
   await runtime.auth.getGoogleAuthUrl('mobile');
   await assert.rejects(runtime.auth.handleGoogleCallback('fixture-code', result.state), (error) => {
-    assert.equal('config' in error, false);
-    assert.equal('response' in error, false);
-    assert.ok(!`${error.message}\n${error.stack}`.includes(result.transaction_token));
+    assertSafeErrorOutput(runtime, error, [
+      'fixture-code', result.transaction_token,
+      oldTokens.access_token, oldTokens.refresh_token,
+    ]);
     return true;
   });
   assert.equal(runtime.pendingValues.has(pendingKey('google')), false);
